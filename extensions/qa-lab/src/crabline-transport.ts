@@ -19,7 +19,6 @@ import {
   createCrablineProviderDelivery,
   createCrablineProviderInboundInput,
   resolveCrablineStateConversation,
-  resolveTelegramQaSenderId,
 } from "./crabline-provider-targets.js";
 import { discardIgnoredResponseBody } from "./ignored-response-body.js";
 import {
@@ -52,6 +51,17 @@ type QaCrablineTransportState = QaTransportState & {
   rememberProviderTarget: (providerTargetKey: string, qaTarget: string) => void;
 };
 
+function encodeQaThreadComponent(value: string) {
+  return value.replaceAll("%", "%25").replaceAll("/", "%2F");
+}
+
+function formatLogicalQaTarget({ conversation, threadId }: QaBusInboundMessageInput) {
+  const prefix = conversation.kind === "direct" ? "dm" : conversation.kind;
+  return threadId
+    ? `thread:/v1/${conversation.kind === "direct" ? "dm/" : ""}${encodeQaThreadComponent(conversation.id)}/${encodeQaThreadComponent(threadId)}`
+    : `${prefix}:${conversation.id}`;
+}
+
 function normalizeCrablineSignalGatewayConfig(config: OpenClawConfig): OpenClawConfig {
   const signal = config.channels?.signal as unknown;
   if (!isRecord(signal)) {
@@ -81,11 +91,6 @@ function normalizeCrablineSignalGatewayConfig(config: OpenClawConfig): OpenClawC
       },
     },
   } as OpenClawConfig;
-}
-
-function formatLogicalQaTarget({ conversation, threadId }: QaBusInboundMessageInput) {
-  const prefix = conversation.kind === "direct" ? "dm" : conversation.kind;
-  return threadId ? `thread:${conversation.id}/${threadId}` : `${prefix}:${conversation.id}`;
 }
 
 const TELEGRAM_LIFECYCLE_METHOD_RE = /\/(sendMessage|editMessageText|deleteMessage)$/u;
@@ -186,21 +191,20 @@ async function postCrablineInbound(params: {
       );
     }
     const result: unknown = await response.json();
+    let providerMessageId: string | undefined;
     if (params.adapter.channel === "matrix" && isRecord(result) && isRecord(result.event)) {
-      return readStringValue(result.event.event_id);
-    }
-    if (params.adapter.channel === "slack" && isRecord(result) && isRecord(result.message)) {
-      return readStringValue(result.message.ts);
-    }
-    if (
+      providerMessageId = readStringValue(result.event.event_id);
+    } else if (params.adapter.channel === "slack" && isRecord(result) && isRecord(result.message)) {
+      providerMessageId = readStringValue(result.message.ts);
+    } else if (
       params.adapter.channel === "telegram" &&
       isRecord(result) &&
       isRecord(result.update) &&
       isRecord(result.update.message)
     ) {
-      return normalizeStringifiedOptionalString(result.update.message.message_id);
+      providerMessageId = normalizeStringifiedOptionalString(result.update.message.message_id);
     }
-    return undefined;
+    return { providerMessageId, response: result };
   } finally {
     await release();
   }
@@ -262,33 +266,24 @@ function createCrablineState(params: {
       }
     },
     async addInboundMessage(input: QaBusInboundMessageInput) {
-      let providerInbound = params.adapter.createInbound({
+      const providerInbound = params.adapter.createInbound({
         input: createCrablineProviderInboundInput(params.adapter, input),
       });
-      if (
-        params.adapter.channel === "telegram" &&
-        input.threadId &&
-        input.conversation.kind !== "direct" &&
-        isRecord(providerInbound.providerBody)
-      ) {
-        // Crabline's Telegram server requires provider-native forum metadata before accepting a
-        // topic. Scenario inputs carry only portable thread identity, so add that server fact here.
-        providerInbound = {
-          ...providerInbound,
-          providerBody: {
-            ...providerInbound.providerBody,
-            chatType: "supergroup",
-            isForum: true,
-          },
-        };
-      }
-      // Providers may coerce channel conversations to groups; preserve the scenario's logical
-      // target so outbound waits and assertions still match the original input.
-      targetByProviderTarget.set(providerInbound.providerTargetKey, formatLogicalQaTarget(input));
-      const providerMessageId = await postCrablineInbound({
+      const ingress = await postCrablineInbound({
         adapter: params.adapter,
         providerInbound,
       });
+      // Register only the provider identity confirmed by successful ingress. Provider servers may
+      // realize a symbolic target as a different native conversation than the provisional input.
+      targetByProviderTarget.set(
+        params.adapter.resolveInboundProviderTargetKey({
+          inbound: providerInbound,
+          response: ingress.response,
+        }),
+        params.adapter.channel === "matrix" || input.conversation.kind === "channel"
+          ? formatLogicalQaTarget(input)
+          : providerInbound.qaTarget,
+      );
       return baseState.addInboundMessage(
         {
           ...input,
@@ -299,7 +294,7 @@ function createCrablineState(params: {
           }),
           ...(providerInbound.threadId ? { threadId: providerInbound.threadId } : {}),
         },
-        providerMessageId,
+        ingress.providerMessageId,
       );
     },
     rememberProviderTarget(providerTargetKey, qaTarget) {
@@ -370,7 +365,10 @@ class QaCrablineTransport extends QaStateBackedTransportAdapter {
     if (this.#selection.channel !== "telegram") {
       return config as QaTransportGatewayConfig;
     }
-    const senderAllowlist = this.#transportPolicy?.senderAllowlist?.map(resolveTelegramQaSenderId);
+    const senderAllowlist = this.#transportPolicy?.senderAllowlist?.map(
+      (senderId) =>
+        this.#adapter.createAgentDelivery({ target: `dm:${senderId}` }).providerTargetKey,
+    );
     if (!this.#transportPolicy?.requireGroupMention && !senderAllowlist) {
       return config as QaTransportGatewayConfig;
     }

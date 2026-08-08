@@ -12,6 +12,7 @@ describe("QA Lab package bus protocol", () => {
     "group:team-room",
     "dm:user-1",
     "thread:Room/Topic",
+    "thread:/v1/dm/Alice%2FSmith/Topic%2F1",
   ])("matches the canonical target parser for %s", (target) => {
     expect(parseQaTarget(target)).toEqual(parseCanonicalQaTarget(target));
   });

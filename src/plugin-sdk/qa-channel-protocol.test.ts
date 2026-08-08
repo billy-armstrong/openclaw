@@ -10,7 +10,31 @@ describe("qa-channel protocol", () => {
     expect(buildQaTarget({ chatType: "channel", conversationId: "Room", threadId: "Topic" })).toBe(
       "thread:Room/Topic",
     );
+    expect(
+      buildQaTarget({ chatType: "direct", conversationId: "Alice/User", threadId: "Topic/1" }),
+    ).toBe("thread:/v1/dm/Alice%2FUser/Topic%2F1");
+    expect(
+      buildQaTarget({ chatType: "group", conversationId: "Team/Room", threadId: "Topic/1" }),
+    ).toBe("thread:/v1/Team%2FRoom/Topic%2F1");
   });
+
+  it.each(["direct", "group", "channel"] as const)(
+    "preserves %s conversation kind across threaded build and parse",
+    (chatType) => {
+      const conversationId = chatType === "channel" ? "CaseRoom" : "Case/Room";
+      const threadId = chatType === "channel" ? "Topic1" : "Topic/1";
+      const target = buildQaTarget({
+        chatType,
+        conversationId,
+        threadId,
+      });
+      expect(parseQaTarget(target)).toEqual({
+        chatType,
+        conversationId,
+        threadId,
+      });
+    },
+  );
 
   it("parses canonical targets without folding ids or prefix casing", () => {
     expect(parseQaTarget("channel:CaseSensitive")).toEqual({
@@ -21,6 +45,11 @@ describe("qa-channel protocol", () => {
       chatType: "channel",
       conversationId: "Room",
       threadId: "Topic",
+    });
+    expect(parseQaTarget("thread:/v1/dm/Alice%2FSmith/Topic%2F1")).toEqual({
+      chatType: "direct",
+      conversationId: "Alice/Smith",
+      threadId: "Topic/1",
     });
     expect(parseQaTarget("bare-id", { defaultChatType: "group" })).toEqual({
       chatType: "group",

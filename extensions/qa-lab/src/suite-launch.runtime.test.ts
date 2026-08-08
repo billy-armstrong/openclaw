@@ -1024,7 +1024,7 @@ describe("qa suite runtime launcher", () => {
       },
     });
     expect(runQaFlowSuite).toHaveBeenCalledTimes(2);
-    expect(maxActive()).toBe(1);
+    expect(maxActive()).toBe(2);
     expect(runQaFlowSuite).toHaveBeenNthCalledWith(
       1,
       expect.objectContaining({

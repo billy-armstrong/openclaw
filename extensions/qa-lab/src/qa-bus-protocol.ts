@@ -24,6 +24,30 @@ export function parseQaTarget(raw: string): QaTargetParts {
     if (!rest) {
       throw new Error(`invalid qa-channel thread target: ${normalized}`);
     }
+    if (rest.startsWith("/v1/")) {
+      const components = rest.slice("/v1/".length).split("/");
+      const explicitKind =
+        components.length === 3 && (components[0] === "dm" || components[0] === "group")
+          ? components.shift()
+          : undefined;
+      if (components.length !== 2) {
+        throw new Error(`invalid qa-channel thread target: ${normalized}`);
+      }
+      try {
+        const conversationId = decodeURIComponent(components[0] ?? "").trim();
+        const threadId = decodeURIComponent(components[1] ?? "").trim();
+        if (!conversationId || !threadId) {
+          throw new Error(`invalid qa-channel thread target: ${normalized}`);
+        }
+        return {
+          chatType: explicitKind === "dm" ? "direct" : "group",
+          conversationId,
+          threadId,
+        };
+      } catch {
+        throw new Error(`invalid qa-channel thread target: ${normalized}`);
+      }
+    }
     const slashIndex = rest.indexOf("/");
     if (slashIndex <= 0 || slashIndex === rest.length - 1) {
       throw new Error(`invalid qa-channel thread target: ${normalized}`);
