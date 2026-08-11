@@ -97,8 +97,8 @@ const caps = [GATEWAY_CLIENT_CAPS.TOOL_EVENTS];
 
 The current registry contains `approvals`, `exec-approvals`, `inline-widgets`,
 `run-tool-bindings`, `session-scoped-events`, `plugin-approvals`,
-`task-suggestions`, `terminal-offset-seq`, `tool-events`, and `ui-commands`.
-Advertise only capabilities the client actually implements.
+`system-agent-qr-code`, `task-suggestions`, `terminal-offset-seq`, `tool-events`,
+and `ui-commands`. Advertise only capabilities the client actually implements.
 
 <Warning>
 `tool-events` gates live tool-execution streaming. The Gateway registers only
@@ -133,6 +133,13 @@ depend on the entrypoint and the resolved model. The gateway can return a typed
 rejection, while text-only model runs can omit additional images after their
 offload cap and still complete the request. The values are a connection-time
 snapshot, so re-read them on every reconnect.
+
+### Present system-agent QR codes
+
+`GATEWAY_CLIENT_CAPS.SYSTEM_AGENT_QR_CODE` and the QR wizard-step shape are
+reserved until system-agent QR production and Gateway projection are both
+available. Clients should not advertise this capability yet; the contract alone
+does not make existing Gateway methods emit QR steps.
 
 ## Recover state after reconnect
 

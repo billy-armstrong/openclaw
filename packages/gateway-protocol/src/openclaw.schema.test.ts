@@ -12,6 +12,8 @@ import type { WizardStep } from "./schema/wizard.js";
 describe("SystemAgentChatResultSchema", () => {
   const validate = Compile(SystemAgentChatResultSchema);
   const base = { sessionId: "chat-1", reply: "Bot token", action: "none" };
+  const qrDataUrl =
+    "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNk+A8AAQUBAScY42YAAAAASUVORK5CYII=";
 
   const steps: Array<{ name: string; step: WizardStep }> = [
     {
@@ -115,6 +117,18 @@ describe("SystemAgentChatResultSchema", () => {
         executor: "client",
       },
     },
+    {
+      name: "bounded QR image with a client acknowledgement",
+      step: {
+        id: "step-qr",
+        type: "qr",
+        title: "Scan QR code",
+        message: "Scan the code, then continue.",
+        qrDataUrl,
+        expiresInMs: 120_000,
+        executor: "client",
+      },
+    },
   ];
 
   it.each(steps)("accepts a chat result carrying a $name step", ({ step }) => {
@@ -127,5 +141,80 @@ describe("SystemAgentChatResultSchema", () => {
 
   it("rejects a step outside the wizard step contract", () => {
     expect(validate.Check({ ...base, step: { id: "step-bogus", type: "freeform" } })).toBe(false);
+  });
+
+  it("rejects an incomplete or gateway-executed QR step", () => {
+    expect(validate.Check({ ...base, step: { id: "step-qr", type: "qr" } })).toBe(false);
+    expect(
+      validate.Check({
+        ...base,
+        step: {
+          ...steps.at(-1)?.step,
+          executor: "gateway",
+        },
+      }),
+    ).toBe(false);
+  });
+
+  it("rejects malformed QR payloads and QR fields on other step types", () => {
+    const oversizedQrDataUrl = `data:image/png;base64,${"A".repeat(16_384)}`;
+    const invalidQrPngDataUrls = [
+      // Zero-width and zero-height IHDR chunks with matching CRCs.
+      "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAAAAAABCAQAAABa3mc8AAAAC0lEQVR42mNk+A8AAQUBAScY42YAAAAASUVORK5CYII=",
+      "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAAACAQAAAB+QN+nAAAAC0lEQVR42mNk+A8AAQUBAScY42YAAAAASUVORK5CYII=",
+      // The valid sample with its IDAT removed, and with a corrupted IHDR CRC.
+      "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAAElFTkSuQmCC",
+      "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwDAAAAC0lEQVR42mNk+A8AAQUBAScY42YAAAAASUVORK5CYII=",
+    ];
+    expect(
+      validate.Check({
+        ...base,
+        step: { ...steps.at(-1)?.step, qrDataUrl: "data:image/png;base64,not-base64" },
+      }),
+    ).toBe(false);
+    expect(
+      validate.Check({
+        ...base,
+        step: { ...steps.at(-1)?.step, qrDataUrl: "data:image/png;base64,SGVsbG8=" },
+      }),
+    ).toBe(false);
+    expect(
+      validate.Check({
+        ...base,
+        step: { ...steps.at(-1)?.step, qrDataUrl: "data:image/png;base64,iVBORw0KGgp=" },
+      }),
+    ).toBe(false);
+    expect(
+      validate.Check({
+        ...base,
+        step: { ...steps.at(-1)?.step, qrDataUrl: qrDataUrl.slice(0, -1) },
+      }),
+    ).toBe(false);
+    expect(
+      validate.Check({
+        ...base,
+        step: { ...steps.at(-1)?.step, qrDataUrl: oversizedQrDataUrl },
+      }),
+    ).toBe(false);
+    for (const invalidQrPngDataUrl of invalidQrPngDataUrls) {
+      expect(
+        validate.Check({
+          ...base,
+          step: { ...steps.at(-1)?.step, qrDataUrl: invalidQrPngDataUrl },
+        }),
+      ).toBe(false);
+    }
+    expect(
+      validate.Check({
+        ...base,
+        step: {
+          id: "step-text",
+          type: "text",
+          executor: "client",
+          qrDataUrl,
+          expiresInMs: 120_000,
+        },
+      }),
+    ).toBe(false);
   });
 });
