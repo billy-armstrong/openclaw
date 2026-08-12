@@ -12,6 +12,7 @@ import {
 } from "../../../lib/chat/commands.ts";
 import { exportChatMarkdown } from "../export.ts";
 import { adjustTextareaHeight } from "./chat-composer-dom.ts";
+import { findDirectInlineSlashArgumentInvocation } from "./chat-composer-inline-slash.ts";
 import { commitComposerDraft, getChatComposerState } from "./chat-composer-state.ts";
 import type { ChatComposerProps, ChatComposerState } from "./chat-composer-types.ts";
 
@@ -439,22 +440,48 @@ function submitInlineSlashArgument(props: ChatComposerProps, requestUpdate: () =
   return true;
 }
 
+function beginDirectInlineSlashArgument(
+  props: ChatComposerProps,
+  state: ChatComposerState,
+): boolean {
+  if (!props.onSlashCommand) {
+    return false;
+  }
+  const target = state.composerTextarea;
+  const current = target?.value ?? props.getDraft?.() ?? props.draft;
+  const caret = target?.selectionStart ?? current.length;
+  const invocation = findDirectInlineSlashArgumentInvocation(current, caret);
+  if (!invocation) {
+    return false;
+  }
+  state.slashMenuMode = "freeform-args";
+  state.slashMenuCommand = invocation.command;
+  state.slashMenuCompletion = invocation.completion;
+  return true;
+}
+
 export function handleInlineSlashArgumentKeyDown(
   event: KeyboardEvent,
   props: ChatComposerProps,
   requestUpdate: () => void,
 ): boolean {
   const state = getChatComposerState(props.paneId);
-  if (state.slashMenuMode !== "freeform-args" || !state.slashMenuCompletion?.inline) {
-    return false;
-  }
   if (event.key === "Escape") {
+    if (state.slashMenuMode !== "freeform-args" || !state.slashMenuCompletion?.inline) {
+      return false;
+    }
     event.preventDefault();
     resetSlashMenuState(state);
     requestUpdate();
     return true;
   }
   if (event.key !== "Enter") {
+    return false;
+  }
+  if (
+    (state.slashMenuMode !== "freeform-args" || !state.slashMenuCompletion?.inline) &&
+    !beginDirectInlineSlashArgument(props, state)
+  ) {
     return false;
   }
   event.preventDefault();

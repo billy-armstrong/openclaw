@@ -3620,6 +3620,34 @@ describe("chat slash menu accessibility", () => {
     expect(onSend).not.toHaveBeenCalled();
   });
 
+  it.each([
+    ["think", "high"],
+    ["verbose", "full"],
+  ])(
+    "executes a directly typed inline /%s argument without requiring completion",
+    (command, argument) => {
+      let draft = "";
+      const onDraftChange = vi.fn((next: string) => {
+        draft = next;
+      });
+      const onSend = vi.fn();
+      const onSlashCommand = vi.fn();
+      const { container } = createReactiveDraftHarness({
+        onDraftChange,
+        onSend,
+        onSlashCommand,
+      });
+
+      inputDraftAtEnd(container, `hello /${command} ${argument}`);
+      keydownComposer(container, "Enter");
+
+      expect(onSlashCommand).toHaveBeenCalledExactlyOnceWith(`/${command} ${argument}`);
+      expect(draft).toBe("hello ");
+      expect(container.querySelector<HTMLTextAreaElement>("textarea")?.value).toBe(draft);
+      expect(onSend).not.toHaveBeenCalled();
+    },
+  );
+
   it("preserves typed inline argument mode across command hydration", async () => {
     let draft = "";
     let resolveRefresh: (() => void) | undefined;
