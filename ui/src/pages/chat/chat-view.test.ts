@@ -3549,23 +3549,42 @@ describe("chat slash menu accessibility", () => {
     expect(onSlashIntent).toHaveBeenCalledTimes(1);
   });
 
-  it("completes an inline-safe slash token without replacing the surrounding draft", () => {
+  it("executes an inline command separately and removes only its token from the draft", () => {
     let draft = "";
     const onDraftChange = vi.fn((next: string) => {
       draft = next;
     });
     const onSend = vi.fn();
-    const { container } = createReactiveDraftHarness({ onDraftChange, onSend });
+    const onSlashCommand = vi.fn();
+    const { container } = createReactiveDraftHarness({ onDraftChange, onSend, onSlashCommand });
 
-    inputDraftAtEnd(container, "Please use /thi");
+    inputDraftAtEnd(container, "hello /statu");
 
     expect(container.querySelector(".slash-menu")).not.toBeNull();
-    expect(container.querySelector(".slash-menu-name")?.textContent?.trim()).toBe("/think");
+    expect(container.querySelector(".slash-menu-name")?.textContent?.trim()).toBe("/status");
     keydownComposer(container, "Enter");
 
-    expect(draft).toBe("Please use /think ");
+    expect(onSlashCommand).toHaveBeenCalledExactlyOnceWith("/status");
+    expect(draft).toBe("hello ");
     expect(container.querySelector<HTMLTextAreaElement>("textarea")?.value).toBe(draft);
     expect(onSend).not.toHaveBeenCalled();
+  });
+
+  it("keeps inline skill selection in the draft for the eventual model turn", () => {
+    replaceSkillCommands({ key: "weather", description: "Check the weather." });
+    let draft = "";
+    const onDraftChange = vi.fn((next: string) => {
+      draft = next;
+    });
+    const onSlashCommand = vi.fn();
+    const { container } = createReactiveDraftHarness({ onDraftChange, onSlashCommand });
+
+    inputDraftAtEnd(container, "Please use /wea");
+    expect(container.querySelector(".slash-menu-name")?.textContent?.trim()).toBe("/weather");
+    keydownComposer(container, "Enter");
+
+    expect(onSlashCommand).not.toHaveBeenCalled();
+    expect(draft).toBe("Please use /weather ");
   });
 
   it("does not offer session-changing commands in the middle of prose", () => {

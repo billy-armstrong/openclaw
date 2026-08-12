@@ -118,6 +118,7 @@ export type ChatComposerProps = {
   onRequestUpdate?: () => void;
   onHistoryKeydown?: (input: ChatInputHistoryKeyInput) => ChatInputHistoryKeyResult;
   onSlashIntent?: () => void | Promise<void>;
+  onSlashCommand?: (command: string) => void;
   onSend: () => void;
   onCompact?: () => void | Promise<void>;
   onToggleRealtimeTalk?: () => void;

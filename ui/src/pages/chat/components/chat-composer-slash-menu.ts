@@ -164,12 +164,57 @@ function commitInlineSlashSelection(
   return true;
 }
 
+function removeInlineSlashSelection(props: ChatComposerProps, state: ChatComposerState): boolean {
+  const completion = state.slashMenuCompletion;
+  if (!completion?.inline) {
+    return false;
+  }
+  const target = state.composerTextarea;
+  const current = target?.value ?? props.getDraft?.() ?? props.draft;
+  const before = current.slice(0, completion.start);
+  let after = current.slice(completion.end);
+  if (/\s$/u.test(before) && /^\s/u.test(after)) {
+    after = after.slice(1);
+  } else if (before.length === 0 && /^\s/u.test(after)) {
+    after = after.slice(1);
+  }
+  const next = `${before}${after}`;
+  const caret = before.length;
+  if (target) {
+    target.value = next;
+    adjustTextareaHeight(target);
+  }
+  commitComposerDraft(props, next);
+  queueMicrotask(() => {
+    const textarea = state.composerTextarea;
+    if (!textarea) {
+      return;
+    }
+    textarea.focus({ preventScroll: true });
+    textarea.selectionStart = caret;
+    textarea.selectionEnd = caret;
+  });
+  return true;
+}
+
 export function selectSlashCommand(
   cmd: SlashCommandDef,
   props: ChatComposerProps,
   requestUpdate: () => void,
 ) {
   const state = getChatComposerState(props.paneId);
+  if (
+    state.slashMenuCompletion?.inline &&
+    cmd.source !== "skill" &&
+    props.onSlashCommand &&
+    removeInlineSlashSelection(props, state)
+  ) {
+    state.slashMenuOpen = false;
+    resetSlashMenuState(state);
+    requestUpdate();
+    props.onSlashCommand(`/${cmd.name}`);
+    return;
+  }
   if (commitInlineSlashSelection(`/${cmd.name}`, props, state)) {
     state.slashMenuOpen = false;
     resetSlashMenuState(state);

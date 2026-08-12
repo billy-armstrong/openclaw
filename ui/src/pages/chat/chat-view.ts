@@ -216,6 +216,7 @@ export type ChatProps = ChatTaskSuggestionTrayProps &
     onRequestUpdate?: () => void;
     onHistoryKeydown?: (input: ChatInputHistoryKeyInput) => ChatInputHistoryKeyResult;
     onSlashIntent?: () => void | Promise<void>;
+    onSlashCommand?: (command: string) => void;
     onSend: () => void;
     onCompact?: () => void | Promise<void>;
     onOpenSessionCheckpoints?: () => void | Promise<void>;
@@ -293,11 +294,9 @@ function isImageLightboxEvent(event: Event): boolean {
 
 export function renderChat(props: ChatProps) {
   const requestUpdate = props.onRequestUpdate ?? (() => {});
-  const workspaceCollapsed = props.sessionWorkspace?.collapsed !== false;
-  const workspaceDockBottom = Boolean(
-    props.sessionWorkspace &&
-    (props.sessionWorkspace.dock === "bottom" || props.sessionWorkspace.narrowLayout),
-  );
+  const workspace = props.sessionWorkspace;
+  const workspaceCollapsed = workspace?.collapsed !== false;
+  const workspaceDockBottom = Boolean(workspace?.dock === "bottom" || workspace?.narrowLayout);
   const tasksOpen = props.backgroundTasks?.collapsed === false;
   const tasksDockBottom = tasksOpen && props.backgroundTasks?.narrowLayout === true;
   const canCompose = props.canSend;
@@ -505,6 +504,7 @@ export function renderChat(props: ChatProps) {
     onRequestUpdate: requestUpdate,
     onHistoryKeydown: props.onHistoryKeydown,
     onSlashIntent: props.onSlashIntent,
+    onSlashCommand: props.onSlashCommand,
     onSend: props.onSend,
     onCompact: props.suggestionComposer ? undefined : props.onCompact,
     onToggleRealtimeTalk: props.suggestionComposer ? undefined : props.onToggleRealtimeTalk,
