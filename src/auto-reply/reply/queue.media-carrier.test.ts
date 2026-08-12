@@ -1,6 +1,12 @@
 // Prompt media carrier tests cover collect batching, deferral, and retry identity.
 import { afterEach, describe, expect, it } from "vitest";
 import { createDeferred } from "../../../test/helpers/promise.js";
+import {
+  compareChannelAdmissionParticipants,
+  configureChannelAdmissionEvidenceCollection,
+  consumeChannelAdmissionEvidence,
+  createChannelParticipantAdmissionEvidence,
+} from "../../channels/message-access/admission-evidence.js";
 import type { FollowupRun, QueueSettings } from "./queue.js";
 import { enqueueFollowupRun, FollowupRunDeferredError, scheduleFollowupDrain } from "./queue.js";
 import { createQueueTestRun } from "./queue.test-helpers.js";
@@ -8,16 +14,23 @@ import { createOverflowSummaryRetrySource } from "./queue/drain.js";
 import { clearFollowupQueue } from "./queue/state.js";
 
 const queueKeys = new Set<string>();
+const evidenceCleanups = new Set<() => void>();
 
 afterEach(() => {
   for (const key of queueKeys) {
     clearFollowupQueue(key);
   }
   queueKeys.clear();
+  for (const cleanup of evidenceCleanups) {
+    cleanup();
+  }
+  evidenceCleanups.clear();
 });
 
 describe("followup prompt media carrier", () => {
   it("keeps collected prompt bytes and ordered facts stable across deferred admission", async () => {
+    const clearCollection = configureChannelAdmissionEvidenceCollection(true);
+    evidenceCleanups.add(clearCollection);
     const key = `prompt-media-collect-${Date.now()}`;
     queueKeys.add(key);
     const settings: QueueSettings = { mode: "collect", debounceMs: 0 };
@@ -30,6 +43,10 @@ describe("followup prompt media carrier", () => {
     ] as const) {
       const run = createQueueTestRun({ prompt });
       run.media = [{ path, contentType }];
+      run.channelAdmissionEvidence = createChannelParticipantAdmissionEvidence({
+        channelId: "test",
+        participantId: "person-1",
+      });
       enqueueFollowupRun(key, run, settings);
     }
 
@@ -59,17 +76,31 @@ describe("followup prompt media carrier", () => {
         { path: "/tmp/b.pdf", contentType: "application/pdf" },
       ],
     ]);
+    expect(
+      compareChannelAdmissionParticipants(calls.map((run) => run.channelAdmissionEvidence)),
+    ).toBe("same");
+    expect(consumeChannelAdmissionEvidence(calls[1]?.channelAdmissionEvidence)).toMatchObject({
+      ingressState: "present",
+      invoker: { state: "present", kind: "person" },
+    });
   });
 
   it("preserves facts when an overflow source is rebuilt for retry", () => {
+    const clearCollection = configureChannelAdmissionEvidenceCollection(true);
+    evidenceCleanups.add(clearCollection);
     const source = createQueueTestRun({
       prompt: "[media attached: /tmp/retry.png (image/png)]\nretry me",
     });
     source.media = [{ path: "/tmp/retry.png", contentType: "image/png" }];
+    source.channelAdmissionEvidence = createChannelParticipantAdmissionEvidence({
+      channelId: "test",
+      participantId: "person-1",
+    });
 
     const retry = createOverflowSummaryRetrySource(source);
 
     expect(retry.prompt).toBe(source.prompt);
     expect(retry.media).toEqual(source.media);
+    expect(retry.channelAdmissionEvidence).toBe(source.channelAdmissionEvidence);
   });
 });
