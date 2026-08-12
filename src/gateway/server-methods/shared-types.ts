@@ -225,6 +225,7 @@ type GatewayKernelContext = {
   loadGatewayModelCatalogSnapshot: (params?: {
     agentId?: string;
     agentDir?: string;
+    deferAuthRefresh?: boolean;
     readOnly?: boolean;
     workspaceDir?: string;
   }) => Promise<GatewayModelCatalogSnapshot>;
