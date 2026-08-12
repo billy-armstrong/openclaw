@@ -4,6 +4,7 @@ import {
   gatewayKernelLogs,
   resetPreparedModelCatalogForTestCore,
 } from "./server-kernel.js";
+import { runGatewayLifecycleSteps } from "./server-lifecycle-steps.js";
 import type { GatewayServer, GatewayServerOptions } from "./server-public.js";
 import { createGatewayHttpTransport } from "./server-runtime-state.js";
 import { finishGatewayStartup } from "./server-startup-finish.js";
@@ -56,7 +57,7 @@ export async function startGatewayServerCore(
       waitForPostReadyWork: () => postReadyWorkBarrier,
     });
   } catch (err) {
-    await closeOnStartupFailure();
+    await runGatewayLifecycleSteps([closeOnStartupFailure], [err]);
     throw err;
   }
   // The public server is fully initialized now. Leave a short I/O window before
@@ -69,20 +70,28 @@ export async function startGatewayServerCore(
   return {
     close: async (optsLocal) => {
       try {
-        await beginClosePrelude();
-        // Kill any live operator shells before the socket layer tears down.
-        terminalSessions.disposeAll();
-        await stopRegisteredGatewayLifetimeSidecars();
-        await stopRegisteredPostReadySidecars();
-        // Run gateway_stop plugin hook before shutdown
-        const { runGlobalGatewayStopSafely } = await import("../plugins/hook-runner-global.js");
-        await runGlobalGatewayStopSafely({
-          event: { reason: optsLocal?.reason ?? "gateway stopping" },
-          ctx: { port },
-          onError: (err) => log.warn(`gateway_stop hook failed: ${String(err)}`),
-        });
-        await runClosePrelude();
-        await close(optsLocal);
+        await runGatewayLifecycleSteps([
+          async () => {
+            await beginClosePrelude();
+          },
+          // Kill any live operator shells before the socket layer tears down.
+          () => {
+            terminalSessions.disposeAll();
+          },
+          stopRegisteredGatewayLifetimeSidecars,
+          stopRegisteredPostReadySidecars,
+          async () => {
+            // Run gateway_stop plugin hook before shutdown.
+            const { runGlobalGatewayStopSafely } = await import("../plugins/hook-runner-global.js");
+            await runGlobalGatewayStopSafely({
+              event: { reason: optsLocal?.reason ?? "gateway stopping" },
+              ctx: { port },
+              onError: (err) => log.warn(`gateway_stop hook failed: ${String(err)}`),
+            });
+          },
+          runClosePrelude,
+          () => close(optsLocal),
+        ]);
       } finally {
         clearFallbackGatewayContextForServer.get()();
       }

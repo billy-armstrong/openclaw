@@ -6,6 +6,7 @@ import { clearSecretsRuntimeSnapshotState } from "../secrets/runtime-state.js";
 import { createLazyRuntimeModule } from "../shared/lazy-runtime.js";
 import { startGatewayCoreRuntime } from "./server-core-runtime.js";
 import { prepareGatewayKernelRequestRuntime } from "./server-kernel-request-runtime.js";
+import { runGatewayLifecycleSteps } from "./server-lifecycle-steps.js";
 import { prepareGatewayLifecycle } from "./server-lifecycle.js";
 import type { GatewayServerOptions } from "./server-public.js";
 import { prepareGatewayKernelState } from "./server-runtime-state-prepare.js";
@@ -160,7 +161,7 @@ export async function createGatewayKernel(port = 18789, opts: GatewayServerOptio
     return await prepareGatewayKernelRequestRuntime({ coreRuntime, log, logHealth });
   } catch (error) {
     if (lifecycleRuntime) {
-      await lifecycleRuntime.closeOnStartupFailure();
+      await runGatewayLifecycleSteps([lifecycleRuntime.closeOnStartupFailure], [error]);
     } else {
       clearSecretsRuntimeSnapshotState();
       clearPluginMetadataLifecycleCaches();
