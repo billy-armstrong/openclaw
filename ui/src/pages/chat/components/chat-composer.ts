@@ -31,6 +31,7 @@ import {
   exportMarkdown,
   getActiveSlashMenuOptionId,
   getActiveSlashMenuOptionLabel,
+  handleInlineSlashArgumentKeyDown,
   isSlashMenuVisible,
   paneDomId,
   resetSlashMenuState,
@@ -329,6 +330,10 @@ export function renderChatComposer(props: ChatComposerProps) {
       ) {
         return;
       }
+    }
+
+    if (props.connected && handleInlineSlashArgumentKeyDown(event, props, requestUpdate)) {
+      return;
     }
 
     if (

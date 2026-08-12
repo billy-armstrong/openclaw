@@ -60,6 +60,13 @@ function requestSlashCommandRefresh(
   void Promise.resolve(refresh).finally(() => {
     state.slashCommandRefreshPending = false;
     const nextValue = getCurrentValue?.() ?? props.getDraft?.() ?? value;
+    if (state.slashMenuMode === "freeform-args" && state.slashMenuCompletion?.inline) {
+      updateSlashMenu(nextValue, requestUpdate, props, { skipSlashIntent: true });
+      return;
+    }
+    if (state.slashMenuMode === "args" && state.slashMenuCompletion?.inline) {
+      return;
+    }
     const caret = state.composerTextarea?.selectionStart ?? nextValue.length;
     if (!findInlineSlashCompletion(nextValue, caret)) {
       closeSlashMenuIfNeeded(state, requestUpdate);
@@ -77,6 +84,21 @@ export function updateSlashMenu(
   getCurrentValue?: () => string,
 ): void {
   const state = getChatComposerState(props.paneId);
+  if (
+    state.slashMenuMode === "freeform-args" &&
+    state.slashMenuCompletion?.inline &&
+    state.slashMenuCommand
+  ) {
+    const caret = state.composerTextarea?.selectionStart ?? value.length;
+    const prefix = `/${state.slashMenuCommand.name} `;
+    const start = state.slashMenuCompletion.start;
+    if (caret >= start + prefix.length && value.slice(start, start + prefix.length) === prefix) {
+      state.slashMenuCompletion.end = caret;
+      requestUpdate();
+      return;
+    }
+    resetSlashMenuState(state);
+  }
   const argMatch = value.match(/^\/(\S+)\s(.*)$/);
   if (argMatch) {
     if (!opts.skipSlashIntent) {
@@ -164,6 +186,77 @@ function commitInlineSlashSelection(
   return true;
 }
 
+function beginInlineFreeformSlashArguments(
+  cmd: SlashCommandDef,
+  props: ChatComposerProps,
+  state: ChatComposerState,
+): boolean {
+  const completion = state.slashMenuCompletion;
+  if (!completion?.inline) {
+    return false;
+  }
+  const target = state.composerTextarea;
+  const current = target?.value ?? props.getDraft?.() ?? props.draft;
+  const replacement = `/${cmd.name} `;
+  const next = `${current.slice(0, completion.start)}${replacement}${current.slice(completion.end)}`;
+  const caret = completion.start + replacement.length;
+  if (target) {
+    target.value = next;
+    adjustTextareaHeight(target);
+  }
+  commitComposerDraft(props, next);
+  state.slashMenuCompletion = {
+    query: cmd.name,
+    start: completion.start,
+    end: caret,
+    inline: true,
+  };
+  queueMicrotask(() => {
+    const textarea = state.composerTextarea;
+    if (!textarea) {
+      return;
+    }
+    textarea.focus({ preventScroll: true });
+    textarea.selectionStart = caret;
+    textarea.selectionEnd = caret;
+  });
+  return true;
+}
+
+function beginInlineSlashArguments(
+  cmd: SlashCommandDef,
+  props: ChatComposerProps,
+  state: ChatComposerState,
+  requestUpdate: () => void,
+): boolean {
+  if (
+    !state.slashMenuCompletion?.inline ||
+    cmd.source === "skill" ||
+    !cmd.args ||
+    !props.onSlashCommand
+  ) {
+    return false;
+  }
+  state.slashMenuCommand = cmd;
+  state.slashMenuIndex = 0;
+  state.slashMenuItems = [];
+  if (cmd.argOptions?.length) {
+    state.slashMenuMode = "args";
+    state.slashMenuArgItems = cmd.argOptions;
+    state.slashMenuOpen = true;
+    requestUpdate();
+    return true;
+  }
+  if (!beginInlineFreeformSlashArguments(cmd, props, state)) {
+    return false;
+  }
+  state.slashMenuMode = "freeform-args";
+  state.slashMenuArgItems = [];
+  state.slashMenuOpen = false;
+  requestUpdate();
+  return true;
+}
+
 function removeInlineSlashSelection(props: ChatComposerProps, state: ChatComposerState): boolean {
   const completion = state.slashMenuCompletion;
   if (!completion?.inline) {
@@ -203,6 +296,9 @@ export function selectSlashCommand(
   requestUpdate: () => void,
 ) {
   const state = getChatComposerState(props.paneId);
+  if (beginInlineSlashArguments(cmd, props, state, requestUpdate)) {
+    return;
+  }
   if (
     state.slashMenuCompletion?.inline &&
     cmd.source !== "skill" &&
@@ -250,6 +346,9 @@ export function tabCompleteSlashCommand(
   requestUpdate: () => void,
 ) {
   const state = getChatComposerState(props.paneId);
+  if (beginInlineSlashArguments(cmd, props, state, requestUpdate)) {
+    return;
+  }
   if (commitInlineSlashSelection(`/${cmd.name}`, props, state)) {
     state.slashMenuOpen = false;
     resetSlashMenuState(state);
@@ -280,7 +379,31 @@ export function selectSlashArg(
   run: boolean,
 ) {
   const state = getChatComposerState(props.paneId);
-  const cmdName = state.slashMenuCommand?.name ?? "";
+  const command = state.slashMenuCommand;
+  const cmdName = command?.name ?? "";
+  if (
+    run &&
+    state.slashMenuCompletion?.inline &&
+    command?.source !== "skill" &&
+    props.onSlashCommand &&
+    removeInlineSlashSelection(props, state)
+  ) {
+    state.slashMenuOpen = false;
+    resetSlashMenuState(state);
+    requestUpdate();
+    props.onSlashCommand(`/${cmdName} ${arg}`);
+    return;
+  }
+  if (
+    !run &&
+    state.slashMenuCompletion?.inline &&
+    commitInlineSlashSelection(`/${cmdName} ${arg}`, props, state)
+  ) {
+    state.slashMenuOpen = false;
+    resetSlashMenuState(state);
+    requestUpdate();
+    return;
+  }
   state.slashMenuOpen = false;
   resetSlashMenuState(state);
   commitComposerDraft(props, `/${cmdName} ${arg}`);
@@ -288,6 +411,54 @@ export function selectSlashArg(
     props.onSend();
   }
   requestUpdate();
+}
+
+function submitInlineSlashArgument(props: ChatComposerProps, requestUpdate: () => void): boolean {
+  const state = getChatComposerState(props.paneId);
+  const command = state.slashMenuCommand;
+  const completion = state.slashMenuCompletion;
+  if (
+    state.slashMenuMode !== "freeform-args" ||
+    !completion?.inline ||
+    !command ||
+    !props.onSlashCommand
+  ) {
+    return false;
+  }
+  const target = state.composerTextarea;
+  const current = target?.value ?? props.getDraft?.() ?? props.draft;
+  const prefixEnd = completion.start + `/${command.name} `.length;
+  const args = current.slice(prefixEnd, completion.end).trim();
+  if (!removeInlineSlashSelection(props, state)) {
+    return false;
+  }
+  state.slashMenuOpen = false;
+  resetSlashMenuState(state);
+  requestUpdate();
+  props.onSlashCommand(`/${command.name}${args ? ` ${args}` : ""}`);
+  return true;
+}
+
+export function handleInlineSlashArgumentKeyDown(
+  event: KeyboardEvent,
+  props: ChatComposerProps,
+  requestUpdate: () => void,
+): boolean {
+  const state = getChatComposerState(props.paneId);
+  if (state.slashMenuMode !== "freeform-args" || !state.slashMenuCompletion?.inline) {
+    return false;
+  }
+  if (event.key === "Escape") {
+    event.preventDefault();
+    resetSlashMenuState(state);
+    requestUpdate();
+    return true;
+  }
+  if (event.key !== "Enter") {
+    return false;
+  }
+  event.preventDefault();
+  return submitInlineSlashArgument(props, requestUpdate);
 }
 
 function slashOptionIdSegment(value: string): string {
