@@ -228,6 +228,11 @@ type GatewayKernelContext = {
     readOnly?: boolean;
     workspaceDir?: string;
   }) => Promise<GatewayModelCatalogSnapshot>;
+  readPreparedGatewayModelCatalogSnapshot?: (params?: {
+    agentId?: string;
+    agentDir?: string;
+    workspaceDir?: string;
+  }) => Promise<GatewayModelCatalogSnapshot | undefined>;
   readPreparedGatewayModelCatalog?: (params?: {
     agentId?: string;
     agentDir?: string;
