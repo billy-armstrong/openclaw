@@ -3549,6 +3549,33 @@ describe("chat slash menu accessibility", () => {
     expect(onSlashIntent).toHaveBeenCalledTimes(1);
   });
 
+  it("completes an inline-safe slash token without replacing the surrounding draft", () => {
+    let draft = "";
+    const onDraftChange = vi.fn((next: string) => {
+      draft = next;
+    });
+    const onSend = vi.fn();
+    const { container } = createReactiveDraftHarness({ onDraftChange, onSend });
+
+    inputDraftAtEnd(container, "Please use /thi");
+
+    expect(container.querySelector(".slash-menu")).not.toBeNull();
+    expect(container.querySelector(".slash-menu-name")?.textContent?.trim()).toBe("/think");
+    keydownComposer(container, "Enter");
+
+    expect(draft).toBe("Please use /think ");
+    expect(container.querySelector<HTMLTextAreaElement>("textarea")?.value).toBe(draft);
+    expect(onSend).not.toHaveBeenCalled();
+  });
+
+  it("does not offer session-changing commands in the middle of prose", () => {
+    const container = renderChatView();
+
+    inputDraftAtEnd(container, "Please /reset");
+
+    expect(container.querySelector(".slash-menu")).toBeNull();
+  });
+
   it("hydrates the skill catalog once per active $ reference", async () => {
     replaceSkillCommands({ key: "prose", description: "Prose skill." });
     const onSlashIntent = vi.fn(async () => undefined);

@@ -4,7 +4,7 @@ import type { SessionsListResult } from "../../../api/types.ts";
 import type { QuestionPrompt } from "../../../app/question-prompt.ts";
 import type { ChatSendShortcut } from "../../../app/settings.ts";
 import type { ChatAttachment, ChatQueueItem } from "../../../lib/chat/chat-types.ts";
-import type { SlashCommandDef } from "../../../lib/chat/commands.ts";
+import type { InlineSlashCompletion, SlashCommandDef } from "../../../lib/chat/commands.ts";
 import type { ControlUiFollowUpMode } from "../../../lib/chat/follow-up-mode.ts";
 import type { ProviderUsageDisplayProps } from "../../../lib/provider-quota-summary.ts";
 import type { SessionToolOverrides } from "../../../lib/sessions/patch.ts";
@@ -165,6 +165,7 @@ export type ChatComposerState = {
   slashMenuCommand: SlashCommandDef | null;
   slashMenuArgItems: string[];
   slashCommandRefreshPending: boolean;
+  slashMenuCompletion: InlineSlashCompletion | null;
   skillMenuOpen: boolean;
   skillMenuItems: SlashCommandDef[];
   skillMenuIndex: number;

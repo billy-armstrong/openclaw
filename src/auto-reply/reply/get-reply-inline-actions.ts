@@ -112,14 +112,16 @@ function getBuiltinSlashCommands(): Set<string> {
   return builtinSlashCommands;
 }
 
-function resolveSlashCommandName(commandBodyNormalized: string): string | null {
-  const trimmed = commandBodyNormalized.trim();
-  if (!trimmed.startsWith("/")) {
-    return null;
+function listSlashCommandNames(commandBodyNormalized: string): string[] {
+  const names: string[] = [];
+  const pattern = /(?:^|\s)\/([^\s:]+)(?=$|\s|:)/giu;
+  for (const match of commandBodyNormalized.matchAll(pattern)) {
+    const name = normalizeOptionalLowercaseString(match[1]);
+    if (name) {
+      names.push(name);
+    }
   }
-  const match = trimmed.match(/^\/([^\s:]+)(?::|\s|$)/);
-  const name = normalizeOptionalLowercaseString(match?.[1]) ?? "";
-  return name ? name : null;
+  return names;
 }
 
 function applyExplicitSkillReferences(
@@ -350,7 +352,7 @@ export async function handleInlineActions(params: {
     return { kind: "reply", reply: undefined };
   }
 
-  const slashCommandName = resolveSlashCommandName(command.commandBodyNormalized);
+  const slashCommandNames = listSlashCommandNames(command.commandBodyNormalized);
   const hasSkillReferences =
     command.isAuthorizedSender &&
     ctx.Surface === INTERNAL_MESSAGE_CHANNEL &&
@@ -358,9 +360,12 @@ export async function handleInlineActions(params: {
   const shouldLoadSkillCommands =
     allowTextCommands &&
     (hasSkillReferences ||
-      (slashCommandName !== null &&
-        // `/skill …` needs the full skill command list.
-        (slashCommandName === "skill" || !getBuiltinSlashCommands().has(slashCommandName))));
+      slashCommandNames.some(
+        (name) =>
+          // `/skill …` needs the full skill command list. Unknown slash names may
+          // also be inline skill invocations embedded in an otherwise normal message.
+          name === "skill" || !getBuiltinSlashCommands().has(name),
+      ));
   const canReusePreloadedSkillCommands = execOverrides === undefined;
   const skillCommands =
     shouldLoadSkillCommands &&
@@ -380,7 +385,7 @@ export async function handleInlineActions(params: {
           })
         : [];
 
-  const skillInvocation =
+  let skillInvocation =
     allowTextCommands && skillCommands.length > 0
       ? resolveSkillCommandInvocation({
           commandBodyNormalized: command.commandBodyNormalized,
@@ -389,13 +394,18 @@ export async function handleInlineActions(params: {
       : null;
   if (skillInvocation) {
     if (!command.isAuthorizedSender) {
-      logVerbose(
-        `Ignoring /${skillInvocation.command.name} from unauthorized sender: ${command.senderId || "<unknown>"}`,
-      );
-      typing.cleanup();
-      return { kind: "reply", reply: undefined };
+      if (skillInvocation.inline) {
+        skillInvocation = null;
+      } else {
+        logVerbose(
+          `Ignoring /${skillInvocation.command.name} from unauthorized sender: ${command.senderId || "<unknown>"}`,
+        );
+        typing.cleanup();
+        return { kind: "reply", reply: undefined };
+      }
     }
-
+  }
+  if (skillInvocation) {
     const dispatch = skillInvocation.command.dispatch;
     if (dispatch?.kind === "tool") {
       const rawArgs = (skillInvocation.args ?? "").trim();
@@ -533,7 +543,7 @@ export async function handleInlineActions(params: {
   if (
     hasSkillReferences &&
     !skillInvocation &&
-    resolveSlashCommandName(cleanedBody) === null &&
+    listSlashCommandNames(cleanedBody).length === 0 &&
     skillCommands.length > 0
   ) {
     const referenced = applyExplicitSkillReferences(cleanedBody, skillCommands);

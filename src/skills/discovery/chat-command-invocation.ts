@@ -120,44 +120,84 @@ export function resolveSkillReferenceInvocations(params: {
   return resolved;
 }
 
+function cleanInlineSkillInvocation(body: string, start: number, end: number): string {
+  return `${body.slice(0, start)} ${body.slice(end)}`.replace(/[^\S\r\n]+/gu, " ").trim();
+}
+
+function resolveInlineSkillCommandInvocation(params: {
+  commandBodyNormalized: string;
+  skillCommands: SkillCommandSpec[];
+}): { command: SkillCommandSpec; args?: string; inline: true } | null {
+  const body = params.commandBodyNormalized;
+  const directPattern = /(?:^|\s)\/([^\s:]+)(?=$|\s|:)(?:\s*:\s*)?/giu;
+  for (const match of body.matchAll(directPattern)) {
+    const rawName = match[1] ?? "";
+    if (normalizeOptionalLowercaseString(rawName) === "skill") {
+      continue;
+    }
+    const command = findSkillCommand(params.skillCommands, rawName);
+    if (!command || match.index === undefined) {
+      continue;
+    }
+    const leadingWhitespace = match[0].length - match[0].trimStart().length;
+    const start = match.index + leadingWhitespace;
+    const end = match.index + match[0].length;
+    const args = cleanInlineSkillInvocation(body, start, end);
+    return { command, args: args || undefined, inline: true };
+  }
+
+  const skillPattern = /(?:^|\s)\/skill(?=$|\s|:)(?:\s*:\s*|\s+)([^\s:]+)/giu;
+  for (const match of body.matchAll(skillPattern)) {
+    const command = findSkillCommand(params.skillCommands, match[1] ?? "");
+    if (!command || match.index === undefined) {
+      continue;
+    }
+    const leadingWhitespace = match[0].length - match[0].trimStart().length;
+    const start = match.index + leadingWhitespace;
+    const end = match.index + match[0].length;
+    const args = cleanInlineSkillInvocation(body, start, end);
+    return { command, args: args || undefined, inline: true };
+  }
+  return null;
+}
+
 export function resolveSkillCommandInvocation(params: {
   commandBodyNormalized: string;
   skillCommands: SkillCommandSpec[];
-}): { command: SkillCommandSpec; args?: string } | null {
+}): { command: SkillCommandSpec; args?: string; inline?: boolean } | null {
   const trimmed = params.commandBodyNormalized.trim();
-  if (!trimmed.startsWith("/")) {
-    return null;
-  }
-  const match = trimmed.match(/^\/([^\s]+)(?:\s+([\s\S]+))?$/);
-  if (!match) {
-    return null;
-  }
-  const commandName = normalizeOptionalLowercaseString(match[1]);
-  if (!commandName) {
-    return null;
-  }
-  if (commandName === "skill") {
-    const remainder = match[2]?.trim();
-    if (!remainder) {
+  if (trimmed.startsWith("/")) {
+    const match = trimmed.match(/^\/([^\s]+)(?:\s+([\s\S]+))?$/);
+    if (!match) {
       return null;
     }
-    const skillMatch = remainder.match(/^([^\s]+)(?:\s+([\s\S]+))?$/);
-    if (!skillMatch) {
+    const commandName = normalizeOptionalLowercaseString(match[1]);
+    if (!commandName) {
       return null;
     }
-    const skillCommand = findSkillCommand(params.skillCommands, skillMatch[1] ?? "");
-    if (!skillCommand) {
-      return null;
+    if (commandName === "skill") {
+      const remainder = match[2]?.trim();
+      if (!remainder) {
+        return null;
+      }
+      const skillMatch = remainder.match(/^([^\s]+)(?:\s+([\s\S]+))?$/);
+      if (!skillMatch) {
+        return null;
+      }
+      const skillCommand = findSkillCommand(params.skillCommands, skillMatch[1] ?? "");
+      if (!skillCommand) {
+        return null;
+      }
+      const args = skillMatch[2]?.trim();
+      return { command: skillCommand, args: args || undefined };
     }
-    const args = skillMatch[2]?.trim();
-    return { command: skillCommand, args: args || undefined };
+    const command = params.skillCommands.find(
+      (entry) => normalizeOptionalLowercaseString(entry.name) === commandName,
+    );
+    if (command) {
+      const args = match[2]?.trim();
+      return { command, args: args || undefined };
+    }
   }
-  const command = params.skillCommands.find(
-    (entry) => normalizeOptionalLowercaseString(entry.name) === commandName,
-  );
-  if (!command) {
-    return null;
-  }
-  const args = match[2]?.trim();
-  return { command, args: args || undefined };
+  return resolveInlineSkillCommandInvocation(params);
 }

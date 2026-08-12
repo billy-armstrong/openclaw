@@ -3,6 +3,7 @@ import { icons, type IconName } from "../../../components/icons.ts";
 import { t } from "../../../i18n/index.ts";
 import {
   SLASH_COMMANDS,
+  findInlineSlashCompletion,
   getSlashCommandCategoryLabel,
   getSlashCommandCompletions,
   getSlashCommandDescription,
@@ -10,6 +11,7 @@ import {
   type SlashCommandDef,
 } from "../../../lib/chat/commands.ts";
 import { exportChatMarkdown } from "../export.ts";
+import { adjustTextareaHeight } from "./chat-composer-dom.ts";
 import { commitComposerDraft, getChatComposerState } from "./chat-composer-state.ts";
 import type { ChatComposerProps, ChatComposerState } from "./chat-composer-types.ts";
 
@@ -18,6 +20,7 @@ export function resetSlashMenuState(state: ChatComposerState): void {
   state.slashMenuCommand = null;
   state.slashMenuArgItems = [];
   state.slashMenuItems = [];
+  state.slashMenuCompletion = null;
 }
 
 function hasVisibleSlashMenuState(state: ChatComposerState): boolean {
@@ -57,7 +60,8 @@ function requestSlashCommandRefresh(
   void Promise.resolve(refresh).finally(() => {
     state.slashCommandRefreshPending = false;
     const nextValue = getCurrentValue?.() ?? props.getDraft?.() ?? value;
-    if (!nextValue.startsWith("/")) {
+    const caret = state.composerTextarea?.selectionStart ?? nextValue.length;
+    if (!findInlineSlashCompletion(nextValue, caret)) {
       closeSlashMenuIfNeeded(state, requestUpdate);
       return;
     }
@@ -104,12 +108,17 @@ export function updateSlashMenu(
     return;
   }
 
-  const match = value.match(/^\/(\S*)$/);
-  if (match) {
+  const caret = state.composerTextarea?.selectionStart ?? value.length;
+  const completion = findInlineSlashCompletion(value, caret);
+  if (completion) {
     if (!opts.skipSlashIntent) {
       requestSlashCommandRefresh(value, props, requestUpdate, getCurrentValue);
     }
-    const items = getSlashCommandCompletions(match[1] ?? "", { showAll: true });
+    const items = getSlashCommandCompletions(completion.query, {
+      showAll: true,
+      inlineOnly: completion.inline,
+    });
+    state.slashMenuCompletion = completion;
     state.slashMenuItems = items;
     state.slashMenuOpen = items.length > 0;
     state.slashMenuIndex = 0;
@@ -123,12 +132,50 @@ export function updateSlashMenu(
   requestUpdate();
 }
 
+function commitInlineSlashSelection(
+  replacement: string,
+  props: ChatComposerProps,
+  state: ChatComposerState,
+): boolean {
+  const completion = state.slashMenuCompletion;
+  if (!completion?.inline) {
+    return false;
+  }
+  const target = state.composerTextarea;
+  const current = target?.value ?? props.getDraft?.() ?? props.draft;
+  const after = current.slice(completion.end);
+  const separator = after.length === 0 || !/^\s/u.test(after) ? " " : "";
+  const next = `${current.slice(0, completion.start)}${replacement}${separator}${after}`;
+  const caret = completion.start + replacement.length + separator.length;
+  if (target) {
+    target.value = next;
+    adjustTextareaHeight(target);
+  }
+  commitComposerDraft(props, next);
+  queueMicrotask(() => {
+    const textarea = state.composerTextarea;
+    if (!textarea) {
+      return;
+    }
+    textarea.focus({ preventScroll: true });
+    textarea.selectionStart = caret;
+    textarea.selectionEnd = caret;
+  });
+  return true;
+}
+
 export function selectSlashCommand(
   cmd: SlashCommandDef,
   props: ChatComposerProps,
   requestUpdate: () => void,
 ) {
   const state = getChatComposerState(props.paneId);
+  if (commitInlineSlashSelection(`/${cmd.name}`, props, state)) {
+    state.slashMenuOpen = false;
+    resetSlashMenuState(state);
+    requestUpdate();
+    return;
+  }
   if (cmd.argOptions?.length) {
     commitComposerDraft(props, `/${cmd.name} `);
     state.slashMenuMode = "args";
@@ -158,6 +205,12 @@ export function tabCompleteSlashCommand(
   requestUpdate: () => void,
 ) {
   const state = getChatComposerState(props.paneId);
+  if (commitInlineSlashSelection(`/${cmd.name}`, props, state)) {
+    state.slashMenuOpen = false;
+    resetSlashMenuState(state);
+    requestUpdate();
+    return;
+  }
   if (cmd.argOptions?.length) {
     commitComposerDraft(props, `/${cmd.name} `);
     state.slashMenuMode = "args";

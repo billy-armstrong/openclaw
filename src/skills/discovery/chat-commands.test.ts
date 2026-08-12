@@ -210,6 +210,42 @@ describe("resolveSkillCommandInvocation", () => {
     expect(invocation?.args).toBe("first line\nsecond line");
   });
 
+  it("matches direct skill invocations embedded in a sentence", () => {
+    const invocation = resolveSkillCommandInvocation({
+      commandBodyNormalized: "Please use /demo_skill to do the thing",
+      skillCommands: [{ name: "demo_skill", skillName: "demo-skill", description: "Demo" }],
+    });
+    expect(invocation?.command.skillName).toBe("demo-skill");
+    expect(invocation?.args).toBe("Please use to do the thing");
+    expect(invocation?.inline).toBe(true);
+  });
+
+  it("matches /skill invocations embedded in a sentence", () => {
+    const invocation = resolveSkillCommandInvocation({
+      commandBodyNormalized: "Please ask /skill demo_skill about this",
+      skillCommands: [{ name: "demo_skill", skillName: "demo-skill", description: "Demo" }],
+    });
+    expect(invocation?.command.name).toBe("demo_skill");
+    expect(invocation?.args).toBe("Please ask about this");
+    expect(invocation?.inline).toBe(true);
+  });
+
+  it("does not treat URL or path fragments as inline skill invocations", () => {
+    const skillCommands = [{ name: "demo_skill", skillName: "demo-skill", description: "Demo" }];
+    expect(
+      resolveSkillCommandInvocation({
+        commandBodyNormalized: "See https://example.com/demo_skill",
+        skillCommands,
+      }),
+    ).toBeNull();
+    expect(
+      resolveSkillCommandInvocation({
+        commandBodyNormalized: "Open tmp/demo_skill please",
+        skillCommands,
+      }),
+    ).toBeNull();
+  });
+
   it("normalizes /skill lookup names", () => {
     const invocation = resolveSkillCommandInvocation({
       commandBodyNormalized: "/skill demo-skill",

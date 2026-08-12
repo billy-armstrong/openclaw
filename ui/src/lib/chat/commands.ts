@@ -51,6 +51,22 @@ type CommandLike = {
   skillModelVisible?: boolean;
 };
 
+const INLINE_SAFE_COMMAND_KEYS = new Set([
+  "help",
+  "commands",
+  "whoami",
+  "status",
+  "think",
+  "verbose",
+  "trace",
+  "fast",
+  "reasoning",
+  "elevated",
+  "exec",
+  "model",
+  "queue",
+]);
+
 const REMOTE_SLASH_IDENTIFIER_PATTERN = /^[a-z0-9][a-z0-9_-]*$/u;
 const MAX_REMOTE_COMMANDS = 500;
 const MAX_REMOTE_ALIAS_COUNT = 20;
@@ -479,15 +495,22 @@ function getSlashCommandRelevance(command: SlashCommandDef, filter: string): num
 
 export function getSlashCommandCompletions(
   filter: string,
-  options?: { showAll?: boolean },
+  options?: { showAll?: boolean; inlineOnly?: boolean },
 ): SlashCommandDef[] {
   const lower = normalizeLowercaseStringOrEmpty(filter);
   const showAll = options?.showAll ?? false;
-  let commands = lower
+  let commands = options?.inlineOnly
     ? SLASH_COMMANDS.filter(
-        (command) => getSlashCommandRelevance(command, lower) < NON_MATCHING_COMMAND_RANK,
+        (command) =>
+          (command.source === "skill" && command.skillModelVisible === true) ||
+          INLINE_SAFE_COMMAND_KEYS.has(command.key),
       )
     : SLASH_COMMANDS;
+  commands = lower
+    ? commands.filter(
+        (command) => getSlashCommandRelevance(command, lower) < NON_MATCHING_COMMAND_RANK,
+      )
+    : commands;
 
   // When no filter text and not explicitly showing all, hide "power" tier commands
   if (!lower && !showAll) {
@@ -513,6 +536,45 @@ export function getSlashCommandCompletions(
     }
     return 0;
   });
+}
+
+export type InlineSlashCompletion = {
+  query: string;
+  start: number;
+  end: number;
+  inline: boolean;
+};
+
+/** Finds the slash token being edited at the caret, including inside normal prose. */
+export function findInlineSlashCompletion(
+  text: string,
+  caret = text.length,
+): InlineSlashCompletion | null {
+  const boundedCaret = Math.max(0, Math.min(caret, text.length));
+  const prefix = text.slice(0, boundedCaret);
+  const match = prefix.match(/(?:^|\s)\/([^\s/:]*)$/u);
+  if (!match || match.index === undefined) {
+    return null;
+  }
+  const slashOffset = match[0].indexOf("/");
+  const start = match.index + slashOffset;
+  if (text[start + 1] === "/") {
+    return null;
+  }
+  let end = boundedCaret;
+  while (end < text.length && !/\s/u.test(text[end] ?? "")) {
+    end += 1;
+  }
+  const query = text.slice(start + 1, boundedCaret);
+  if (!/^[^\s/:]*$/u.test(query)) {
+    return null;
+  }
+  return {
+    query,
+    start,
+    end,
+    inline: text.slice(0, start).trim().length > 0 || text.slice(end).trim().length > 0,
+  };
 }
 
 export function getSkillCommandCompletions(filter: string): SlashCommandDef[] {

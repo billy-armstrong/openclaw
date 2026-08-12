@@ -460,6 +460,7 @@ export function renderChatComposer(props: ChatComposerProps) {
   };
   const handleSelect = (event: Event) => {
     const target = event.target as HTMLTextAreaElement;
+    updateSlashMenu(target.value, requestUpdate, props, {}, () => target.value);
     updateSkillMenu(
       target.value,
       target.selectionStart,
