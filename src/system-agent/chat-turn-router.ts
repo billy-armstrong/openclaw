@@ -169,7 +169,12 @@ export class ChatTurnRouter {
 
   async answerWizard(result: Promise<ChatWizardAnswerResult>): Promise<ChatWizardAnswerResult> {
     const answer = await result;
-    return { ...answer, text: await this.finishWizardText(answer) };
+    return await this.finalizeWizardResult(answer);
+  }
+
+  async finalizeWizardResult<T extends ChatWizardResult>(result: T): Promise<T> {
+    const verify = result.configWritten ? await this.callbacks.verifyConfigAfterWrite() : null;
+    return { ...result, text: [result.text, verify].filter(Boolean).join("\n") };
   }
 
   async resolveTurn(
@@ -179,7 +184,8 @@ export class ChatTurnRouter {
     if (this.wizard.active) {
       const result = await this.wizard.resolveReply(text);
       if (result !== null) {
-        return { text: await this.finishWizardText(result), action: "none" };
+        const finalized = await this.finalizeWizardResult(result);
+        return { text: finalized.text, action: "none" };
       }
     }
     const trimmed = text.trim();
@@ -618,7 +624,8 @@ export class ChatTurnRouter {
     if (resolved.sensitiveChannel) {
       this.lastSensitiveChannel = resolved.sensitiveChannel;
     }
-    return { text: await this.finishWizardText(resolved), action: "none" };
+    const finalized = await this.finalizeWizardResult(resolved);
+    return { text: finalized.text, action: "none" };
   }
 
   private async prependWizard(
@@ -627,11 +634,6 @@ export class ChatTurnRouter {
   ): Promise<SystemAgentChatReply> {
     const reply = await this.startWizard(result);
     return { ...reply, text: [prefix, reply.text].filter(Boolean).join("\n\n") };
-  }
-
-  private async finishWizardText(result: ChatWizardResult): Promise<string> {
-    const verify = result.configWritten ? await this.callbacks.verifyConfigAfterWrite() : null;
-    return [result.text, verify].filter(Boolean).join("\n");
   }
 
   private startModelSetup(): SystemAgentChatReply {

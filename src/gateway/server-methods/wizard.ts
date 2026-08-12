@@ -22,10 +22,10 @@ import {
 } from "../../wizard/session.js";
 import { formatForLog } from "../ws-log.js";
 import {
-  createAdmittedWizardSession,
   SETUP_ADMISSION_BUSY_MESSAGE,
   whenAdmittedWizardSessionSettled,
 } from "./setup-admission.js";
+import { admitWizard } from "./system-agent-session-lifecycle.js";
 import type { GatewayRequestContext, GatewayRequestHandlers, RespondFn } from "./types.js";
 import { assertValidParams } from "./validation.js";
 
@@ -146,7 +146,12 @@ export const wizardHandlers: GatewayRequestHandlers = {
               ),
             ),
           );
-    const session = await createAdmittedWizardSession(createSession, flow === "setup");
+    const session = await admitWizard(
+      context.wizardSessions,
+      sessionId,
+      createSession,
+      flow === "setup",
+    );
     if (!session) {
       respond(
         false,
@@ -156,7 +161,6 @@ export const wizardHandlers: GatewayRequestHandlers = {
       return;
     }
     retainGatewayWorkUntilSettled(session);
-    context.wizardSessions.set(sessionId, session);
     const result = await session.next();
     if (result.done) {
       // Let the runner release setup admission before the terminal response,

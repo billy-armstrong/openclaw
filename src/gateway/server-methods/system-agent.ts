@@ -55,7 +55,6 @@ import {
   listVisiblePendingApprovalRequests,
 } from "./approval-shared.js";
 import {
-  createAdmittedWizardSession,
   runExclusiveSystemAgentSetupActivation,
   SETUP_ADMISSION_BUSY_MESSAGE,
   SetupAdmissionBusyError,
@@ -66,6 +65,7 @@ import {
   getSystemAgentChatInputError,
   runSystemAgentChatInput,
 } from "./system-agent-chat-turn.js";
+import { admitWizard } from "./system-agent-session-lifecycle.js";
 import { assertSystemAgentSessionStoreActive } from "./system-agent-session-lifecycle.js";
 import type { GatewayClient, GatewayRequestContext, GatewayRequestHandlers } from "./types.js";
 import type { RespondFn } from "./types.js";
@@ -348,8 +348,9 @@ export const systemAgentHandlers: GatewayRequestHandlers = {
     ) {
       return;
     }
-    const sessionId = params.sessionId;
-    const session = await createAdmittedWizardSession(
+    const session = await admitWizard(
+      context.wizardSessions,
+      params.sessionId,
       () =>
         new WizardSession(
           async (prompter, signal, runnerSession) => {
@@ -384,9 +385,8 @@ export const systemAgentHandlers: GatewayRequestHandlers = {
       respondRetryableSetupUnavailable(respond, SETUP_ADMISSION_BUSY_MESSAGE);
       return;
     }
-    context.wizardSessions.set(sessionId, session);
     // Return ownership immediately so the client can cancel while provider auth waits.
-    respond(true, { sessionId, done: false, status: "running" }, undefined);
+    respond(true, { sessionId: params.sessionId, done: false, status: "running" }, undefined);
   },
   /** Run one provider-owned prepare flow over the shared wizard transport. */
   "openclaw.setup.prepare.start": async ({ params, respond, context }) => {
@@ -400,8 +400,9 @@ export const systemAgentHandlers: GatewayRequestHandlers = {
     ) {
       return;
     }
-    const sessionId = params.sessionId;
-    const session = await createAdmittedWizardSession(
+    const session = await admitWizard(
+      context.wizardSessions,
+      params.sessionId,
       () =>
         new WizardSession(
           async (prompter, signal, runnerSession) => {
@@ -464,8 +465,7 @@ export const systemAgentHandlers: GatewayRequestHandlers = {
       respondRetryableSetupUnavailable(respond, SETUP_ADMISSION_BUSY_MESSAGE);
       return;
     }
-    context.wizardSessions.set(sessionId, session);
-    respond(true, { sessionId, done: false, status: "running" }, undefined);
+    respond(true, { sessionId: params.sessionId, done: false, status: "running" }, undefined);
   },
   /**
    * Structured onboarding: live-test one candidate and persist it on success.
