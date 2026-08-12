@@ -399,7 +399,7 @@ describe("custodian page", () => {
     ]);
   });
 
-  it("keeps rows for a same-ownership client replacement and requests a fresh welcome", async () => {
+  it("recovers rows for a same-ownership client replacement before a fresh welcome", async () => {
     let chatCalls = 0;
     const request = vi.fn(async (method: string, _params?: unknown) => {
       if (method === "openclaw.chat.history") {
@@ -423,15 +423,16 @@ describe("custodian page", () => {
     await waitForFast(() => expect(request).toHaveBeenCalledTimes(2));
 
     setGatewaySnapshot({ client: { request } as unknown as GatewayBrowserClient });
-    await waitForFast(() => expect(request).toHaveBeenCalledTimes(3));
+    await waitForFast(() => expect(request).toHaveBeenCalledTimes(4));
     await waitForFast(() => expect(page.textContent).toContain("Fresh session welcome"));
 
     expect(request.mock.calls.map(([method]) => method)).toEqual([
       "openclaw.chat.history",
       "openclaw.chat",
+      "openclaw.chat.history",
       "openclaw.chat",
     ]);
-    expect(request.mock.calls[2]?.[1]).toMatchObject({
+    expect(request.mock.calls[3]?.[1]).toMatchObject({
       sessionId: expect.stringMatching(/^control-ui-onboarding-/),
     });
     expect(page.textContent).toContain("Earlier state");
