@@ -33,7 +33,7 @@ export async function startGatewayServerCore(
     clearFallbackGatewayContextForServer,
     closeOnStartupFailure,
     createCloseHandler,
-    runClosePrelude,
+    finishClosePrelude,
     stopRegisteredGatewayLifetimeSidecars,
     stopRegisteredPostReadySidecars,
     terminalSessions,
@@ -89,7 +89,7 @@ export async function startGatewayServerCore(
               onError: (err) => log.warn(`gateway_stop hook failed: ${String(err)}`),
             });
           },
-          runClosePrelude,
+          finishClosePrelude,
           () => close(optsLocal),
         ]);
       } finally {
