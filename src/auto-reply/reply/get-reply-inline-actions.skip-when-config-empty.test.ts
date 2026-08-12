@@ -912,6 +912,40 @@ describe("handleInlineActions", () => {
     expect(handleCommandsMock).not.toHaveBeenCalled();
   });
 
+  it("keeps explicit skill references when unrelated slash prose is present", async () => {
+    const typing = createTypingController();
+    const original = "Review /path with $office_hours.";
+    const ctx = buildTestCtx({
+      Body: original,
+      CommandBody: original,
+      Provider: "webchat",
+      Surface: "webchat",
+    });
+
+    const result = await runTestInlineActions({
+      ctx,
+      typing,
+      cleanedBody: original,
+      command: {
+        isAuthorizedSender: true,
+        rawBodyNormalized: original,
+        commandBodyNormalized: original,
+      },
+      overrides: {
+        allowTextCommands: true,
+        cfg: { commands: { text: true } },
+        skillCommands: officeHoursSkillCommands(),
+      },
+    });
+
+    expect(result.kind).toBe("continue");
+    if (result.kind !== "continue") {
+      throw new Error("expected explicit skill reference to continue to the model");
+    }
+    expect(result.cleanedBody).toContain("- office-hours");
+    expect(result.cleanedBody).toContain(`User request:\n${original}`);
+  });
+
   it("returns a visible error instead of silently dropping excess skill references", async () => {
     const typing = createTypingController();
     const skillCommands: SkillCommandSpec[] = Array.from({ length: 9 }, (_, index) => ({

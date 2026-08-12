@@ -540,12 +540,7 @@ export async function handleInlineActions(params: {
     sessionCtx.BodyStripped = cleanedBody;
   }
 
-  if (
-    hasSkillReferences &&
-    !skillInvocation &&
-    listSlashCommandNames(cleanedBody).length === 0 &&
-    skillCommands.length > 0
-  ) {
+  if (hasSkillReferences && !skillInvocation && skillCommands.length > 0) {
     const referenced = applyExplicitSkillReferences(cleanedBody, skillCommands);
     if (referenced.overflow) {
       typing.cleanup();

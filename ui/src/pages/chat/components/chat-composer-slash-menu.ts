@@ -3,6 +3,7 @@ import { icons, type IconName } from "../../../components/icons.ts";
 import { t } from "../../../i18n/index.ts";
 import {
   SLASH_COMMANDS,
+  executesInlineImmediately,
   findInlineSlashCompletion,
   getSlashCommandCategoryLabel,
   getSlashCommandCompletions,
@@ -303,6 +304,7 @@ export function selectSlashCommand(
   if (
     state.slashMenuCompletion?.inline &&
     cmd.source !== "skill" &&
+    executesInlineImmediately(cmd) &&
     props.onSlashCommand &&
     removeInlineSlashSelection(props, state)
   ) {
@@ -385,7 +387,9 @@ export function selectSlashArg(
   if (
     run &&
     state.slashMenuCompletion?.inline &&
-    command?.source !== "skill" &&
+    command &&
+    command.source !== "skill" &&
+    executesInlineImmediately(command) &&
     props.onSlashCommand &&
     removeInlineSlashSelection(props, state)
   ) {
@@ -396,8 +400,8 @@ export function selectSlashArg(
     return;
   }
   if (
-    !run &&
     state.slashMenuCompletion?.inline &&
+    (!run || !command || !executesInlineImmediately(command)) &&
     commitInlineSlashSelection(`/${cmdName} ${arg}`, props, state)
   ) {
     state.slashMenuOpen = false;
@@ -422,6 +426,7 @@ function submitInlineSlashArgument(props: ChatComposerProps, requestUpdate: () =
     state.slashMenuMode !== "freeform-args" ||
     !completion?.inline ||
     !command ||
+    !executesInlineImmediately(command) ||
     !props.onSlashCommand
   ) {
     return false;
@@ -482,6 +487,9 @@ export function handleInlineSlashArgumentKeyDown(
     (state.slashMenuMode !== "freeform-args" || !state.slashMenuCompletion?.inline) &&
     !beginDirectInlineSlashArgument(props, state)
   ) {
+    return false;
+  }
+  if (!state.slashMenuCommand || !executesInlineImmediately(state.slashMenuCommand)) {
     return false;
   }
   event.preventDefault();

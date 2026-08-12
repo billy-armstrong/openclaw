@@ -14,6 +14,8 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { clampTimerTimeoutMs } from "@openclaw/normalization-core/number-coercion";
 import { sliceUtf16Safe } from "@openclaw/normalization-core/utf16-slice";
+import { parseStrictBooleanArg } from "../lib/arg-utils.mts";
+import { coerceErrorMessage } from "../lib/error-format.mts";
 import { sleep } from "../lib/sleep.mjs";
 import { resolveWindowsTaskkillPath } from "../lib/windows-taskkill.mjs";
 import { createPnpmRunnerSpawnSpec } from "../pnpm-runner.mts";
@@ -67,6 +69,7 @@ type Options = {
   envFile?: string;
   expect: string[];
   gatewayPort: number;
+  humanDelayFixedMs?: number;
   idleTimeout: string;
   keepBox: boolean;
   leaseId?: string;
@@ -221,6 +224,7 @@ function usageText() {
     "Useful options:",
     "  --class <name>                Crabbox machine class. Default: standard.",
     "  --desktop-chat-title <name>   Telegram Desktop chat to select before recording.",
+    "  --human-delay-fixed-ms <ms>   Set a fixed custom human delay before Gateway startup.",
     "  --id <cbx_id>                 Reuse an existing Crabbox desktop lease.",
     "  --keep-box                    Leave the Crabbox lease running for VNC debugging.",
     "  --link-preview <true|false>   Set channels.telegram.linkPreview before Gateway startup.",
@@ -301,16 +305,6 @@ function parseTcpPort(value: string, label: string) {
     throw new Error(`${label} must be a TCP port from 1 to 65535.`);
   }
   return parsed;
-}
-
-function parseBoolean(value: string, label: string) {
-  if (value === "true") {
-    return true;
-  }
-  if (value === "false") {
-    return false;
-  }
-  throw new Error(`${label} must be true or false.`);
 }
 
 function createTelegramProofRunId() {
@@ -410,6 +404,8 @@ export function parseArgs(argvInput: string[]): Options {
       opts.expect.push(readValue({ repeatable: true }));
     } else if (arg === "--gateway-port") {
       opts.gatewayPort = parseTcpPort(readValue(), "--gateway-port");
+    } else if (arg === "--human-delay-fixed-ms") {
+      opts.humanDelayFixedMs = parsePositiveTimerMs(readValue(), "--human-delay-fixed-ms");
     } else if (arg === "--id") {
       opts.leaseId = readValue();
     } else if (arg === "--idle-timeout") {
@@ -417,7 +413,7 @@ export function parseArgs(argvInput: string[]): Options {
     } else if (arg === "--keep-box") {
       opts.keepBox = true;
     } else if (arg === "--link-preview") {
-      opts.linkPreview = parseBoolean(readValue(), "--link-preview");
+      opts.linkPreview = parseStrictBooleanArg(readValue(), "--link-preview");
     } else if (arg === "--mock-port") {
       opts.mockPort = parseTcpPort(readValue(), "--mock-port");
     } else if (arg === "--mock-response-file") {
@@ -510,6 +506,9 @@ export function parseArgs(argvInput: string[]): Options {
   }
   if (command === "publish" && !opts.publishPr) {
     throw new Error("publish requires --pr.");
+  }
+  if (command !== "start" && opts.humanDelayFixedMs !== undefined) {
+    throw new Error("--human-delay-fixed-ms is available only for start sessions.");
   }
   if (opts.mcpAppFixture && command !== "start") {
     throw new Error("--mcp-app-fixture is available only for start sessions.");
@@ -1249,6 +1248,7 @@ function telegramResultObject(value: unknown, label: string): JsonObject {
 export function writeSutConfig(params: {
   gatewayPort: number;
   groupId: string;
+  humanDelayFixedMs?: number;
   linkPreview?: boolean;
   mcpAppFixture?: boolean;
   mockPort: number;
@@ -1265,6 +1265,15 @@ export function writeSutConfig(params: {
   const config = {
     agents: {
       defaults: {
+        ...(params.humanDelayFixedMs === undefined
+          ? {}
+          : {
+              humanDelay: {
+                maxMs: params.humanDelayFixedMs,
+                minMs: params.humanDelayFixedMs,
+                mode: "custom",
+              },
+            }),
         model: { primary: "openai/gpt-5.6-luna" },
         models: {
           "openai/gpt-5.6-luna": { params: { openaiWsWarmup: false, transport: "sse" } },
@@ -1376,6 +1385,7 @@ export async function startLocalSut(
   params: {
     gatewayPort: number;
     groupId: string;
+    humanDelayFixedMs?: number;
     mockResponseText: string;
     mockPort: number;
     linkPreview?: boolean;
@@ -1656,9 +1666,7 @@ function destroyLocalSutRuntime(sut: { containerName?: string; tempRoot?: string
 }
 
 function cleanupFailureMessage(message: string, cleanupErrors: unknown[]) {
-  const details = cleanupErrors.map((error) =>
-    error instanceof Error ? error.message : String(error),
-  );
+  const details = cleanupErrors.map(coerceErrorMessage);
   return [message, ...details.map((detail) => `Cleanup failure: ${detail}`)].join("\n");
 }
 
@@ -1678,6 +1686,7 @@ async function startLocalSutDaemon(params: {
   funnelBridge?: FunnelBridge;
   gatewayPort: number;
   groupId: string;
+  humanDelayFixedMs?: number;
   mockResponseText: string;
   mockPort: number;
   linkPreview?: boolean;
@@ -2898,6 +2907,7 @@ async function startSession(root: string, opts: Options, outputDir: string) {
       funnelBridge,
       gatewayPort: opts.gatewayPort,
       groupId: credential.groupId,
+      humanDelayFixedMs: opts.humanDelayFixedMs,
       linkPreview: opts.linkPreview,
       mockResponseText: opts.mockResponseText,
       mockResponseChunkDelayMs: opts.mockResponseChunkDelayMs,
@@ -3518,6 +3528,7 @@ async function main() {
     const sutRuntime = await startLocalSut({
       gatewayPort: opts.gatewayPort,
       groupId: credential.groupId,
+      humanDelayFixedMs: opts.humanDelayFixedMs,
       linkPreview: opts.linkPreview,
       mockResponseText: opts.mockResponseText,
       mockResponseChunkDelayMs: opts.mockResponseChunkDelayMs,

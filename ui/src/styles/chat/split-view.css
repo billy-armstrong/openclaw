@@ -171,6 +171,10 @@ openclaw-chat-pane {
   flex: 0 1 auto;
   min-width: 0;
   align-items: center;
+  /* Inter's visible glyph mass sits slightly below the 28px action glyphs even
+     when their CSS boxes share a center. Lift the whole trail as one optical
+     unit so project icon, labels, and separator meet the chrome centerline. */
+  transform: translateY(-1px);
   /* Both interactive segments pull their 5px hover padding back out of flow, so
      this gap is the separator's actual optical air on each side. */
   gap: 6px;
@@ -282,7 +286,6 @@ openclaw-chat-pane {
   }
 }
 
-.chat-pane__cloud,
 .chat-pane__incognito {
   display: inline-flex;
   flex: 0 0 auto;
@@ -290,7 +293,6 @@ openclaw-chat-pane {
   color: var(--muted);
 }
 
-.chat-pane__cloud svg,
 .chat-pane__incognito svg,
 .chat-pane__workspace-chip svg {
   width: 14px;
@@ -322,6 +324,42 @@ openclaw-chat-pane {
 .chat-pane__workspace-menu {
   flex: 0 1 auto;
   min-width: 0;
+}
+
+.chat-pane__placement-menu {
+  flex: 0 0 auto;
+}
+
+.chat-pane__placement-menu::part(menu) {
+  width: 250px;
+  padding: 6px;
+  border: 1px solid color-mix(in srgb, var(--border-strong) 78%, transparent);
+  border-radius: 8px;
+  background: var(--bg-elevated);
+  box-shadow: var(--shadow-lg);
+}
+
+.chat-pane__placement-chip {
+  padding: 2px;
+  border: 0;
+  background: transparent;
+  color: var(--muted);
+  font: inherit;
+  font-size: 11px;
+  cursor: var(--cursor-action);
+}
+
+.chat-pane__placement-chip:hover,
+.chat-pane__placement-chip:focus-visible {
+  color: var(--text);
+  outline: none;
+}
+
+.chat-pane__placement-state {
+  padding: 6px 8px;
+  color: var(--muted);
+  font-size: 11px;
+  font-weight: 600;
 }
 
 .chat-pane__gateway-menu {

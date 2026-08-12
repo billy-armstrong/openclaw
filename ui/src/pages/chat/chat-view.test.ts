@@ -52,10 +52,10 @@ import * as chatMessage from "./components/chat-message.ts";
 import { renderChatModelControls } from "./components/chat-model-controls.ts";
 import { ChatSessionRailElement } from "./components/chat-session-rail.ts";
 import {
-  resetChatThreadPresentationState,
-  resetChatThreadSessionPresentationState,
-  toggleChatThreadSearch,
-} from "./components/chat-thread.ts";
+  resetThreadPresentation,
+  resetTranscriptSession,
+  toggleTranscriptSearch,
+} from "./components/chat-thread-interactions.ts";
 import { renderWelcomeState } from "./components/chat-welcome.ts";
 import { RealtimeTalkLevelSignal } from "./realtime-talk-level.ts";
 import {
@@ -1793,6 +1793,9 @@ describe("chat composer workbench", () => {
     const container = renderChatView({
       sessionWorkspace: createSessionWorkspace({
         narrowLayout: true,
+        onToggleTerminal: vi.fn(),
+        onToggleBrowser: vi.fn(),
+        onOpenDiff: vi.fn(),
       }),
     });
 
@@ -1801,6 +1804,8 @@ describe("chat composer workbench", () => {
     expect(container.querySelector(".chat-workspace-rail")).not.toBeNull();
     expect(container.querySelector(".chat-workspace-rail__dock")).toBeNull();
     expect(container.querySelector(".chat-workspace-rail__grip")).toBeNull();
+    expect(container.querySelector(".chat-workspace-rail__terminal")).toBeNull();
+    expect(container.querySelector(".chat-session-diff-toggle")).toBeNull();
   });
 
   it("moves the background-tasks rail to a bottom strip on narrow panes", () => {
@@ -2141,14 +2146,14 @@ describe("per-pane chat presentation state", () => {
       renderChatInto(container, { paneId, draft, getDraft: () => draft });
     };
 
-    toggleChatThreadSearch("pane-a", vi.fn());
+    toggleTranscriptSearch("pane-a", vi.fn());
     renderPane(paneA, "pane-a", "");
     renderPane(paneB, "pane-b", "");
     expect(paneA.querySelector(".agent-chat__search-bar")).not.toBeNull();
     expect(paneB.querySelector(".agent-chat__search-bar")).toBeNull();
 
-    toggleChatThreadSearch("pane-b", vi.fn());
-    resetChatThreadSessionPresentationState("pane-a");
+    toggleTranscriptSearch("pane-b", vi.fn());
+    resetTranscriptSession("pane-a");
     renderPane(paneA, "pane-a", "");
     renderPane(paneB, "pane-b", "");
     expect(paneA.querySelector(".agent-chat__search-bar")).toBeNull();
@@ -3570,7 +3575,7 @@ describe("chat slash menu accessibility", () => {
     expect(onSend).not.toHaveBeenCalled();
   });
 
-  it("executes a selected inline command argument and preserves the surrounding draft", () => {
+  it("keeps a selected inline directive argument in the eventual chat turn", () => {
     let draft = "";
     const onDraftChange = vi.fn((next: string) => {
       draft = next;
@@ -3590,8 +3595,8 @@ describe("chat slash menu accessibility", () => {
     expect(fullOption).toBeInstanceOf(HTMLElement);
     fullOption?.click();
 
-    expect(onSlashCommand).toHaveBeenCalledExactlyOnceWith("/verbose full");
-    expect(draft).toBe("hello ");
+    expect(onSlashCommand).not.toHaveBeenCalled();
+    expect(draft).toBe("hello /verbose full ");
     expect(container.querySelector<HTMLTextAreaElement>("textarea")?.value).toBe(draft);
     expect(onSend).not.toHaveBeenCalled();
   });
@@ -3614,10 +3619,10 @@ describe("chat slash menu accessibility", () => {
     inputDraftAtEnd(container, "hello /think high");
     keydownComposer(container, "Enter");
 
-    expect(onSlashCommand).toHaveBeenCalledExactlyOnceWith("/think high");
-    expect(draft).toBe("hello ");
+    expect(onSlashCommand).not.toHaveBeenCalled();
+    expect(draft).toBe("hello /think high");
     expect(container.querySelector<HTMLTextAreaElement>("textarea")?.value).toBe(draft);
-    expect(onSend).not.toHaveBeenCalled();
+    expect(onSend).toHaveBeenCalledOnce();
   });
 
   it.each([
@@ -3641,10 +3646,10 @@ describe("chat slash menu accessibility", () => {
       inputDraftAtEnd(container, `hello /${command} ${argument}`);
       keydownComposer(container, "Enter");
 
-      expect(onSlashCommand).toHaveBeenCalledExactlyOnceWith(`/${command} ${argument}`);
-      expect(draft).toBe("hello ");
+      expect(onSlashCommand).not.toHaveBeenCalled();
+      expect(draft).toBe(`hello /${command} ${argument}`);
       expect(container.querySelector<HTMLTextAreaElement>("textarea")?.value).toBe(draft);
-      expect(onSend).not.toHaveBeenCalled();
+      expect(onSend).toHaveBeenCalledOnce();
     },
   );
 
@@ -3679,12 +3684,12 @@ describe("chat slash menu accessibility", () => {
     inputDraftAtEnd(container, "hello /think high");
     keydownComposer(container, "Enter");
 
-    expect(onSlashCommand).toHaveBeenCalledExactlyOnceWith("/think high");
-    expect(draft).toBe("hello ");
-    expect(onSend).not.toHaveBeenCalled();
+    expect(onSlashCommand).not.toHaveBeenCalled();
+    expect(draft).toBe("hello /think high");
+    expect(onSend).toHaveBeenCalledOnce();
   });
 
-  it("removes a typed inline command argument without consuming trailing prose", () => {
+  it("keeps a typed inline directive and trailing prose in the eventual chat turn", () => {
     let draft = "";
     const onDraftChange = vi.fn((next: string) => {
       draft = next;
@@ -3708,8 +3713,8 @@ describe("chat slash menu accessibility", () => {
     textarea.dispatchEvent(new InputEvent("input", { bubbles: true, inputType: "insertText" }));
     keydownComposer(container, "Enter");
 
-    expect(onSlashCommand).toHaveBeenCalledExactlyOnceWith("/think high");
-    expect(draft).toBe("before after");
+    expect(onSlashCommand).not.toHaveBeenCalled();
+    expect(draft).toBe(withArgument);
     expect(textarea.value).toBe(draft);
   });
 
@@ -7054,11 +7059,11 @@ describe("right-click Reply", () => {
       .click();
     flushFrames();
 
-    resetChatThreadPresentationState("pane-b");
+    resetThreadPresentation("pane-b");
     expect(document.querySelector(".chat-reply-context-menu")).not.toBeNull();
     expect(document.querySelector(".chat-confirm-popover")).not.toBeNull();
 
-    resetChatThreadPresentationState("pane-a");
+    resetThreadPresentation("pane-a");
 
     expect(document.querySelector(".chat-reply-context-menu")).toBeNull();
     expect(document.querySelector(".chat-confirm-popover")).toBeNull();

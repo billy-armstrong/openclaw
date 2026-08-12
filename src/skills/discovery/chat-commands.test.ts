@@ -230,6 +230,25 @@ describe("resolveSkillCommandInvocation", () => {
     expect(invocation?.inline).toBe(true);
   });
 
+  it.each(["Please use /hidden_skill for this", "Please use /skill hidden_skill for this"])(
+    "does not resolve model-hidden inline skill invocations in %j",
+    (commandBodyNormalized) => {
+      expect(
+        resolveSkillCommandInvocation({
+          commandBodyNormalized,
+          skillCommands: [
+            {
+              name: "hidden_skill",
+              skillName: "hidden-skill",
+              description: "Slash only",
+              modelVisible: false,
+            },
+          ],
+        }),
+      ).toBeNull();
+    },
+  );
+
   it("does not treat URL or path fragments as inline skill invocations", () => {
     const skillCommands = [{ name: "demo_skill", skillName: "demo-skill", description: "Demo" }];
     expect(
