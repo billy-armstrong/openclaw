@@ -189,9 +189,6 @@ export function prepareCodexAttemptResources(prompt: CodexAttemptPrompt) {
         state.nativeHookRelay?.rejectPendingDirectChild(childThreadId, reason),
     });
   };
-  const bindNativeSubagentMonitorTurn = (turnId: string) => {
-    state.nativeSubagentMonitor?.bindTurn(turnId);
-  };
   const releaseCurrentRoute = () => {
     state.detachRouteAbort();
     state.detachRouteAbort = () => undefined;
@@ -287,7 +284,6 @@ export function prepareCodexAttemptResources(prompt: CodexAttemptPrompt) {
     releaseSandboxExecEnvironment,
     runCleanupStep,
     registerNativeSubagentMonitor,
-    bindNativeSubagentMonitorTurn,
     releaseCurrentRoute,
     startupTimeoutMs,
     buildNativeHookRelayFinalConfigPatch,

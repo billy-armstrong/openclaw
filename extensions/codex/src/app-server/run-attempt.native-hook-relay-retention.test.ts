@@ -26,12 +26,6 @@ import {
 
 setupRunAttemptTestHooks();
 
-const testing = {
-  flushPendingCodexNativeHookRelayUnregistersForTests(): void {
-    nativeHookRelayUnregisterQueue.flush();
-  },
-};
-
 describe("runCodexAppServerAttempt native hook relay retention", () => {
   it.each([
     {
@@ -255,7 +249,7 @@ describe("runCodexAppServerAttempt native hook relay retention", () => {
         expect(
           nativeHookRelayTesting.getNativeHookRelayRegistrationForTests(relayId),
         ).toBeDefined();
-        fixture.host();
+        fixture.closeHost();
         fixture.closeAdmission();
         await expect(
           invokeNativeHookRelay({
@@ -317,7 +311,7 @@ describe("runCodexAppServerAttempt native hook relay retention", () => {
           },
         } as CodexServerNotification;
         await harness.notify(childTerminal);
-        testing.flushPendingCodexNativeHookRelayUnregistersForTests();
+        nativeHookRelayUnregisterQueue.flush();
         expect(
           nativeHookRelayTesting.getNativeHookRelayRegistrationForTests(relayId),
         ).toBeUndefined();
@@ -334,7 +328,7 @@ describe("runCodexAppServerAttempt native hook relay retention", () => {
           }),
         ).rejects.toThrow(/not found|inactive/);
       } finally {
-        fixture.host();
+        fixture.closeHost();
         fixture.closeAdmission();
       }
     },

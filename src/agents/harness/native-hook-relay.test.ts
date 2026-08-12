@@ -21,20 +21,18 @@ import { setActivePluginRegistry } from "../../plugins/runtime.js";
 import { resolveOpenClawStateSqlitePath } from "../../state/openclaw-state-db.paths.js";
 import {
   closeAdmittedRunDelegatedAuthority,
-  createOperationalRunInstanceRef,
   isRetainedAdmittedRunDelegatedAuthorityActive,
-  prepareAgentRunAdmission,
 } from "../admitted-run-context.js";
-import { createAgentHarnessHostCapabilities } from "./host-capability.js";
+import { createAdmittedHostCapabilityTestFixture } from "./host-capability.test-support.js";
 import * as nativeHookRelayBridge from "./native-hook-relay-bridge.js";
 import { invokeNativeHookRelayBridge } from "./native-hook-relay-client.js";
-import { registerRetainedNativeHookRelay } from "./native-hook-relay-implementation.js";
 import {
   deleteNativeHookRelayBridgeRecordIfOwned,
   readNativeHookRelayBridgeRecord,
   writeNativeHookRelayBridgeRecord,
   type NativeHookRelayBridgeRecord,
 } from "./native-hook-relay-store.js";
+import { registerRetainedNativeHookRelay } from "./native-hook-relay.js";
 import {
   testing,
   buildNativeHookRelayCommand,
@@ -45,6 +43,13 @@ import {
 } from "./native-hook-relay.js";
 
 const NATIVE_HOOK_RELAY_EXEC_PREFIX = process.platform === "win32" ? "" : "exec ";
+
+function readTestNativeAgentId(rawPayload: unknown): string | undefined {
+  if (!isRecord(rawPayload) || typeof rawPayload.agent_id !== "string") {
+    return undefined;
+  }
+  return rawPayload.agent_id.trim() || undefined;
+}
 
 afterEach(() => {
   vi.useRealTimers();
@@ -396,19 +401,8 @@ describe("native hook relay registry", () => {
   });
 
   it("rejects an in-flight root policy after foreground close while a child retains the relay", async () => {
-    const admission = prepareAgentRunAdmission({
-      cfg: {},
-      facts: {
-        runId: "run-root-foreground-close",
-        agentId: "main",
-        ingress: { kind: "system", boundary: "native-hook-relay-test", state: "present" },
-      },
-      operationalRunInstance: createOperationalRunInstanceRef("run-root-foreground-close"),
-    });
-    const admittedRunContext = await admission.admit("plugin-harness", "relay-test");
-    const host = createAgentHarnessHostCapabilities({
-      pluginId: "codex",
-      attempt: { admittedRunContext, runId: "run-root-foreground-close" },
+    const { admittedRunContext, hostCapabilities } = await createAdmittedHostCapabilityTestFixture({
+      runId: "run-root-foreground-close",
     });
     let resolvePolicy: ((value: undefined) => void) | undefined;
     initializeGlobalHookRunner(
@@ -428,9 +422,10 @@ describe("native hook relay registry", () => {
       sessionId: "session-1",
       runId: "run-root-foreground-close",
       allowedEvents: ["pre_tool_use"],
-      runBeforeToolCall: host.capabilities.runBeforeToolCall,
-      assertActive: host.capabilities.assertActive,
+      runBeforeToolCall: hostCapabilities.runBeforeToolCall,
+      assertActive: hostCapabilities.assertActive,
       retention: {
+        readClaim: readTestNativeAgentId,
         shouldRetainAfterForegroundClose: () => true,
         allowPreToolUse: () => false,
         onDispose: () => {},
@@ -460,19 +455,8 @@ describe("native hook relay registry", () => {
   });
 
   it("keeps only a claimed flat native child after foreground cleanup", async () => {
-    const admission = prepareAgentRunAdmission({
-      cfg: {},
-      facts: {
-        runId: "run-retained-child",
-        agentId: "main",
-        ingress: { kind: "system", boundary: "native-hook-relay-test", state: "present" },
-      },
-      operationalRunInstance: createOperationalRunInstanceRef("run-retained-child"),
-    });
-    const admittedRunContext = await admission.admit("plugin-harness", "relay-test");
-    const host = createAgentHarnessHostCapabilities({
-      pluginId: "codex",
-      attempt: { admittedRunContext, runId: "run-retained-child" },
+    const { admittedRunContext, hostCapabilities } = await createAdmittedHostCapabilityTestFixture({
+      runId: "run-retained-child",
     });
     const afterToolCall = vi.fn();
     initializeGlobalHookRunner(
@@ -487,15 +471,12 @@ describe("native hook relay registry", () => {
       sessionId: "session-1",
       runId: "run-retained-child",
       allowedEvents: ["pre_tool_use", "permission_request", "post_tool_use"],
-      runBeforeToolCall: host.capabilities.runBeforeToolCall,
-      assertActive: host.capabilities.assertActive,
+      runBeforeToolCall: hostCapabilities.runBeforeToolCall,
+      assertActive: hostCapabilities.assertActive,
       retention: {
+        readClaim: readTestNativeAgentId,
         shouldRetainAfterForegroundClose: () => retainChild,
-        allowPreToolUse: (payload) =>
-          payload !== null &&
-          typeof payload === "object" &&
-          !Array.isArray(payload) &&
-          payload.agent_id === "child-thread",
+        allowPreToolUse: (claim) => claim === "child-thread",
         onDispose: () => {},
       },
     });
@@ -622,20 +603,8 @@ describe("native hook relay registry", () => {
       if (cause === "expiry") {
         vi.useFakeTimers();
       }
-      const admission = prepareAgentRunAdmission({
-        cfg: {},
-        facts: {
-          runId: `run-retained-${cause}`,
-          agentId: "main",
-          ingress: { kind: "system", boundary: "native-hook-relay-test", state: "present" },
-        },
-        operationalRunInstance: createOperationalRunInstanceRef(`run-retained-${cause}`),
-      });
-      const admittedRunContext = await admission.admit("plugin-harness", "relay-test");
-      const host = createAgentHarnessHostCapabilities({
-        pluginId: "codex",
-        attempt: { admittedRunContext, runId: `run-retained-${cause}` },
-      });
+      const { admittedRunContext, hostCapabilities } =
+        await createAdmittedHostCapabilityTestFixture({ runId: `run-retained-${cause}` });
       const controller = new AbortController();
       const relay = registerRetainedNativeHookRelay({
         provider: "codex",
@@ -643,15 +612,12 @@ describe("native hook relay registry", () => {
         sessionId: "session-1",
         runId: `run-retained-${cause}`,
         allowedEvents: ["pre_tool_use"],
-        runBeforeToolCall: host.capabilities.runBeforeToolCall,
-        assertActive: host.capabilities.assertActive,
+        runBeforeToolCall: hostCapabilities.runBeforeToolCall,
+        assertActive: hostCapabilities.assertActive,
         retention: {
+          readClaim: readTestNativeAgentId,
           shouldRetainAfterForegroundClose: () => true,
-          allowPreToolUse: (payload) =>
-            typeof payload === "object" &&
-            payload !== null &&
-            !Array.isArray(payload) &&
-            payload.agent_id === "child-thread",
+          allowPreToolUse: (claim) => claim === "child-thread",
           onDispose: () => {},
         },
         ...(cause === "abort" ? { signal: controller.signal } : { ttlMs: 5 }),
@@ -689,19 +655,8 @@ describe("native hook relay registry", () => {
   );
 
   it("leaves retained host authority available after an ordinary same-host relay", async () => {
-    const admission = prepareAgentRunAdmission({
-      cfg: {},
-      facts: {
-        runId: "run-ordinary-then-retaining",
-        agentId: "main",
-        ingress: { kind: "system", boundary: "native-hook-relay-test", state: "present" },
-      },
-      operationalRunInstance: createOperationalRunInstanceRef("run-ordinary-then-retaining"),
-    });
-    const admittedRunContext = await admission.admit("plugin-harness", "relay-test");
-    const host = createAgentHarnessHostCapabilities({
-      pluginId: "codex",
-      attempt: { admittedRunContext, runId: "run-ordinary-then-retaining" },
+    const { admittedRunContext, hostCapabilities } = await createAdmittedHostCapabilityTestFixture({
+      runId: "run-ordinary-then-retaining",
     });
     const ordinary = registerNativeHookRelay({
       provider: "codex",
@@ -709,8 +664,8 @@ describe("native hook relay registry", () => {
       sessionId: "session-1",
       runId: "run-ordinary",
       allowedEvents: ["pre_tool_use"],
-      runBeforeToolCall: host.capabilities.runBeforeToolCall,
-      assertActive: host.capabilities.assertActive,
+      runBeforeToolCall: hostCapabilities.runBeforeToolCall,
+      assertActive: hostCapabilities.assertActive,
     });
     const retaining = registerRetainedNativeHookRelay({
       provider: "codex",
@@ -718,15 +673,12 @@ describe("native hook relay registry", () => {
       sessionId: "session-1",
       runId: "run-retaining",
       allowedEvents: ["pre_tool_use"],
-      runBeforeToolCall: host.capabilities.runBeforeToolCall,
-      assertActive: host.capabilities.assertActive,
+      runBeforeToolCall: hostCapabilities.runBeforeToolCall,
+      assertActive: hostCapabilities.assertActive,
       retention: {
+        readClaim: readTestNativeAgentId,
         shouldRetainAfterForegroundClose: () => true,
-        allowPreToolUse: (payload) =>
-          typeof payload === "object" &&
-          payload !== null &&
-          !Array.isArray(payload) &&
-          payload.agent_id === "child-thread",
+        allowPreToolUse: (claim) => claim === "child-thread",
         onDispose: () => {},
       },
     });
@@ -746,19 +698,8 @@ describe("native hook relay registry", () => {
   });
 
   it("does not retain authority from a runtime-shaped public registration", async () => {
-    const admission = prepareAgentRunAdmission({
-      cfg: {},
-      facts: {
-        runId: "run-forged-public-retention",
-        agentId: "main",
-        ingress: { kind: "system", boundary: "native-hook-relay-test", state: "present" },
-      },
-      operationalRunInstance: createOperationalRunInstanceRef("run-forged-public-retention"),
-    });
-    const admittedRunContext = await admission.admit("plugin-harness", "relay-test");
-    const host = createAgentHarnessHostCapabilities({
-      pluginId: "codex",
-      attempt: { admittedRunContext, runId: "run-forged-public-retention" },
+    const { admittedRunContext, hostCapabilities } = await createAdmittedHostCapabilityTestFixture({
+      runId: "run-forged-public-retention",
     });
     const onDispose = vi.fn();
     const relay = registerNativeHookRelay({
@@ -767,9 +708,10 @@ describe("native hook relay registry", () => {
       sessionId: "session-1",
       runId: "run-forged-public-retention",
       allowedEvents: ["pre_tool_use"],
-      runBeforeToolCall: host.capabilities.runBeforeToolCall,
-      assertActive: host.capabilities.assertActive,
+      runBeforeToolCall: hostCapabilities.runBeforeToolCall,
+      assertActive: hostCapabilities.assertActive,
       retention: {
+        readClaim: readTestNativeAgentId,
         shouldRetainAfterForegroundClose: () => true,
         allowPreToolUse: () => true,
         onDispose,
@@ -808,6 +750,7 @@ describe("native hook relay registry", () => {
         ...(mode === "abort" ? { signal: controller.signal } : {}),
         ...(mode === "expiry" ? { ttlMs: 5 } : {}),
         retention: {
+          readClaim: readTestNativeAgentId,
           shouldRetainAfterForegroundClose: () => false,
           allowPreToolUse: () => false,
           onDispose: () => {
@@ -852,6 +795,7 @@ describe("native hook relay registry", () => {
       sessionId: "session-1",
       runId: "run-throwing-retain-predicate",
       retention: {
+        readClaim: readTestNativeAgentId,
         allowPreToolUse: () => false,
         onDispose: () => {},
         shouldRetainAfterForegroundClose: () => {
@@ -872,6 +816,7 @@ describe("native hook relay registry", () => {
       sessionId: "session-1",
       runId: "run-first",
       retention: {
+        readClaim: readTestNativeAgentId,
         shouldRetainAfterForegroundClose: () => false,
         allowPreToolUse: () => false,
         onDispose: () => {
@@ -899,6 +844,7 @@ describe("native hook relay registry", () => {
       runId: "run-first",
       allowedEvents: ["post_tool_use"],
       retention: {
+        readClaim: readTestNativeAgentId,
         shouldRetainAfterForegroundClose: () => false,
         allowPreToolUse: () => false,
         onDispose: () => {
@@ -920,6 +866,7 @@ describe("native hook relay registry", () => {
       runId: "run-replacement",
       allowedEvents: ["post_tool_use"],
       retention: {
+        readClaim: readTestNativeAgentId,
         shouldRetainAfterForegroundClose: () => false,
         allowPreToolUse: () => false,
         onDispose: replacementUnregistered,
@@ -954,6 +901,7 @@ describe("native hook relay registry", () => {
       sessionId: "session-1",
       runId: "run-old",
       retention: {
+        readClaim: readTestNativeAgentId,
         shouldRetainAfterForegroundClose: () => false,
         allowPreToolUse: () => false,
         onDispose: oldUnregistered,
@@ -978,19 +926,8 @@ describe("native hook relay registry", () => {
   });
 
   it("cleans a partial retained relay when bridge setup throws", async () => {
-    const admission = prepareAgentRunAdmission({
-      cfg: {},
-      facts: {
-        runId: "run-bridge-setup-throws",
-        agentId: "main",
-        ingress: { kind: "system", boundary: "native-hook-relay-test", state: "present" },
-      },
-      operationalRunInstance: createOperationalRunInstanceRef("run-bridge-setup-throws"),
-    });
-    const admittedRunContext = await admission.admit("plugin-harness", "relay-test");
-    const host = createAgentHarnessHostCapabilities({
-      pluginId: "codex",
-      attempt: { admittedRunContext, runId: "run-bridge-setup-throws" },
+    const { admittedRunContext, hostCapabilities } = await createAdmittedHostCapabilityTestFixture({
+      runId: "run-bridge-setup-throws",
     });
     const relayId = uniqueNativeHookRelayIdForTests("bridge-setup-throws");
     const bridgeFailure = vi
@@ -1005,9 +942,10 @@ describe("native hook relay registry", () => {
         relayId,
         sessionId: "session-1",
         runId: "run-bridge-setup-throws",
-        runBeforeToolCall: host.capabilities.runBeforeToolCall,
-        assertActive: host.capabilities.assertActive,
+        runBeforeToolCall: hostCapabilities.runBeforeToolCall,
+        assertActive: hostCapabilities.assertActive,
         retention: {
+          readClaim: readTestNativeAgentId,
           shouldRetainAfterForegroundClose: () => true,
           allowPreToolUse: () => false,
           onDispose: () => {},

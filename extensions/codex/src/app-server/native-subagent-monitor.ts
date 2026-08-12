@@ -1479,19 +1479,16 @@ class Monitor {
   }
 
   private clearPendingDirectSpawnEvidenceForParent(parentThreadId: string): void {
-    for (const [turnId, pending] of this.pendingDirectSpawnEvidence) {
-      const remaining = pending.filter((evidence) => evidence.parentThreadId !== parentThreadId);
-      if (remaining.length) {
-        this.pendingDirectSpawnEvidence.set(turnId, remaining);
-      } else {
-        this.pendingDirectSpawnEvidence.delete(turnId);
-      }
-    }
+    this.filterPendingDirectSpawnEvidence((evidence) => evidence.parentThreadId !== parentThreadId);
   }
 
   private removePendingDirectSpawnEvidenceForChild(childThreadId: string): void {
+    this.filterPendingDirectSpawnEvidence((evidence) => evidence.childThreadId !== childThreadId);
+  }
+
+  private filterPendingDirectSpawnEvidence(keep: (evidence: DirectSpawnEvidence) => boolean): void {
     for (const [turnId, pending] of this.pendingDirectSpawnEvidence) {
-      const remaining = pending.filter((evidence) => evidence.childThreadId !== childThreadId);
+      const remaining = pending.filter(keep);
       if (remaining.length) {
         this.pendingDirectSpawnEvidence.set(turnId, remaining);
       } else {

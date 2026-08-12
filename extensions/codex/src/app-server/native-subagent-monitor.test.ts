@@ -19,10 +19,33 @@ import { codexNativeSubagentMonitorRuntime } from "./native-subagent-monitor.js"
 import type {
   CodexAppServerRequestResult,
   CodexServerNotification,
+  JsonObject,
   JsonValue,
 } from "./protocol.js";
 
 type CodexThreadReadResponse = CodexAppServerRequestResult<"thread/read">;
+type DirectSpawnVersion = "v1" | "v2";
+
+function directSpawnItem(
+  version: DirectSpawnVersion,
+  parentThreadId: string,
+  childThreadId: string,
+): JsonObject {
+  return version === "v1"
+    ? {
+        type: "collabAgentToolCall" as const,
+        tool: "spawnAgent" as const,
+        status: "completed" as const,
+        senderThreadId: parentThreadId,
+        receiverThreadIds: [childThreadId],
+      }
+    : {
+        type: "subAgentActivity" as const,
+        kind: "started" as const,
+        agentThreadId: childThreadId,
+        agentPath: `/root/${childThreadId}`,
+      };
+}
 
 const CodexNativeSubagentMonitor = codexNativeSubagentMonitorRuntime.Monitor;
 const registerCodexNativeSubagentMonitor = codexNativeSubagentMonitorRuntime.register;
@@ -627,21 +650,7 @@ describe("CodexNativeSubagentMonitor", () => {
       const claimDirectChild = vi.fn(() => () => undefined);
       const monitor = new CodexNativeSubagentMonitor(client as never, createRuntime());
       const owner = monitor.registerParent({ parentThreadId: "parent-thread", claimDirectChild });
-      const item =
-        version === "v1"
-          ? {
-              type: "collabAgentToolCall",
-              tool: "spawnAgent",
-              status: "completed",
-              senderThreadId: "parent-thread",
-              receiverThreadIds: ["child-thread"],
-            }
-          : {
-              type: "subAgentActivity",
-              kind: "started",
-              agentThreadId: "child-thread",
-              agentPath: "/root/child",
-            };
+      const item = directSpawnItem(version, "parent-thread", "child-thread");
 
       await client.notify({
         method: "item/completed",
@@ -667,13 +676,7 @@ describe("CodexNativeSubagentMonitor", () => {
       params: {
         threadId: "parent-thread",
         turnId: "wrong-turn",
-        item: {
-          type: "collabAgentToolCall",
-          tool: "spawnAgent",
-          status: "completed",
-          senderThreadId: "parent-thread",
-          receiverThreadIds: ["child-thread"],
-        },
+        item: directSpawnItem("v1", "parent-thread", "child-thread"),
       },
     });
     owner.bindTurn("turn-1");
@@ -703,21 +706,7 @@ describe("CodexNativeSubagentMonitor", () => {
         { length: 32 },
         (_, index) => `first-unmatched-${index}`,
       )) {
-        const item =
-          version === "v1"
-            ? {
-                type: "collabAgentToolCall",
-                tool: "spawnAgent",
-                status: "completed",
-                senderThreadId: "parent-first",
-                receiverThreadIds: [childThreadId],
-              }
-            : {
-                type: "subAgentActivity",
-                kind: "started",
-                agentThreadId: childThreadId,
-                agentPath: `/root/${childThreadId}`,
-              };
+        const item = directSpawnItem(version, "parent-first", childThreadId);
         await client.notify({
           method: "item/completed",
           params: { threadId: "parent-first", turnId: "unmatched-first", item },
@@ -725,21 +714,7 @@ describe("CodexNativeSubagentMonitor", () => {
       }
       expect(firstClaim).not.toHaveBeenCalled();
 
-      const secondItem =
-        version === "v1"
-          ? {
-              type: "collabAgentToolCall",
-              tool: "spawnAgent",
-              status: "completed",
-              senderThreadId: "parent-second",
-              receiverThreadIds: ["second-child"],
-            }
-          : {
-              type: "subAgentActivity",
-              kind: "started",
-              agentThreadId: "second-child",
-              agentPath: "/root/second-child",
-            };
+      const secondItem = directSpawnItem(version, "parent-second", "second-child");
       await client.notify({
         method: "item/completed",
         params: { threadId: "parent-second", turnId: "turn-second", item: secondItem },
@@ -766,21 +741,7 @@ describe("CodexNativeSubagentMonitor", () => {
       const claimDirectChild = vi.fn(() => () => undefined);
       const monitor = new CodexNativeSubagentMonitor(client as never, createRuntime());
       const owner = monitor.registerParent({ parentThreadId: "parent-thread", claimDirectChild });
-      const item =
-        version === "v1"
-          ? {
-              type: "collabAgentToolCall",
-              tool: "spawnAgent",
-              status: "completed",
-              senderThreadId: "parent-thread",
-              receiverThreadIds: ["child-thread"],
-            }
-          : {
-              type: "subAgentActivity",
-              kind: "started",
-              agentThreadId: "child-thread",
-              agentPath: "/root/child",
-            };
+      const item = directSpawnItem(version, "parent-thread", "child-thread");
       await client.notify({
         method: "item/completed",
         params: { threadId: "parent-thread", turnId: "turn-1", item },
@@ -819,13 +780,7 @@ describe("CodexNativeSubagentMonitor", () => {
       params: {
         threadId: "parent-thread",
         turnId: "turn-1",
-        item: {
-          type: "collabAgentToolCall",
-          tool: "spawnAgent",
-          status: "completed",
-          senderThreadId: "parent-thread",
-          receiverThreadIds: ["child-thread"],
-        },
+        item: directSpawnItem("v1", "parent-thread", "child-thread"),
       },
     });
     expect(claimDirectChild).toHaveBeenCalledWith("child-thread");
@@ -879,21 +834,7 @@ describe("CodexNativeSubagentMonitor", () => {
         claimDirectChild,
       });
       owner.bindTurn("turn-1");
-      const item =
-        version === "v1"
-          ? {
-              type: "collabAgentToolCall",
-              tool: "spawnAgent",
-              status: "completed",
-              senderThreadId: "parent-thread",
-              receiverThreadIds: ["child-thread"],
-            }
-          : {
-              type: "subAgentActivity",
-              kind: "started",
-              agentThreadId: "child-thread",
-              agentPath: "/root/child",
-            };
+      const item = directSpawnItem(version, "parent-thread", "child-thread");
       await client.notify({
         method: "item/completed",
         params: { threadId: "parent-thread", turnId: "turn-1", item },
@@ -919,13 +860,7 @@ describe("CodexNativeSubagentMonitor", () => {
     const monitor = new CodexNativeSubagentMonitor(client as never, createRuntime());
     const owner = monitor.registerParent({ parentThreadId: "parent-thread", claimDirectChild });
     owner.bindTurn("turn-1");
-    const spawn = {
-      type: "collabAgentToolCall",
-      tool: "spawnAgent",
-      status: "completed",
-      senderThreadId: "parent-thread",
-      receiverThreadIds: ["child-thread"],
-    };
+    const spawn = directSpawnItem("v1", "parent-thread", "child-thread");
     await client.notify({
       method: "item/completed",
       params: { threadId: "parent-thread", turnId: "turn-1", item: spawn },
@@ -947,13 +882,7 @@ describe("CodexNativeSubagentMonitor", () => {
     const monitor = new CodexNativeSubagentMonitor(client as never, createRuntime());
     const owner = monitor.registerParent({ parentThreadId: "parent-thread", claimDirectChild });
     owner.bindTurn("turn-1");
-    const spawn = {
-      type: "collabAgentToolCall",
-      tool: "spawnAgent",
-      status: "completed",
-      senderThreadId: "parent-thread",
-      receiverThreadIds: ["child-thread"],
-    };
+    const spawn = directSpawnItem("v1", "parent-thread", "child-thread");
     await client.notify({
       method: "item/completed",
       params: { threadId: "parent-thread", turnId: "turn-1", item: spawn },
@@ -989,13 +918,7 @@ describe("CodexNativeSubagentMonitor", () => {
         params: {
           threadId: "parent-thread",
           turnId: "turn-1",
-          item: {
-            type: "collabAgentToolCall",
-            tool: "spawnAgent",
-            status: "completed",
-            senderThreadId: "parent-thread",
-            receiverThreadIds: ["child-thread"],
-          },
+          item: directSpawnItem("v1", "parent-thread", "child-thread"),
         },
       });
 
@@ -1036,13 +959,7 @@ describe("CodexNativeSubagentMonitor", () => {
       params: {
         threadId: "parent-thread",
         turnId: "turn-2",
-        item: {
-          type: "collabAgentToolCall",
-          tool: "spawnAgent",
-          status: "completed",
-          senderThreadId: "parent-thread",
-          receiverThreadIds: ["terminal-child-1"],
-        },
+        item: directSpawnItem("v1", "parent-thread", "terminal-child-1"),
       },
     });
 
@@ -1083,13 +1000,7 @@ describe("CodexNativeSubagentMonitor", () => {
       params: {
         threadId: "parent-thread",
         turnId: "turn-2",
-        item: {
-          type: "collabAgentToolCall",
-          tool: "spawnAgent",
-          status: "completed",
-          senderThreadId: "parent-thread",
-          receiverThreadIds: ["child-thread"],
-        },
+        item: directSpawnItem("v1", "parent-thread", "child-thread"),
       },
     });
 
@@ -1119,13 +1030,7 @@ describe("CodexNativeSubagentMonitor", () => {
       params: {
         threadId: "parent-thread",
         turnId: "turn-second",
-        item: {
-          type: "collabAgentToolCall",
-          tool: "spawnAgent",
-          status: "completed",
-          senderThreadId: "parent-thread",
-          receiverThreadIds: ["child-second"],
-        },
+        item: directSpawnItem("v1", "parent-thread", "child-second"),
       },
     });
     expect(firstClaim).not.toHaveBeenCalled();
@@ -1137,13 +1042,7 @@ describe("CodexNativeSubagentMonitor", () => {
       params: {
         threadId: "parent-thread",
         turnId: "turn-first",
-        item: {
-          type: "collabAgentToolCall",
-          tool: "spawnAgent",
-          status: "completed",
-          senderThreadId: "parent-thread",
-          receiverThreadIds: ["child-first"],
-        },
+        item: directSpawnItem("v1", "parent-thread", "child-first"),
       },
     });
     expect(firstClaim).toHaveBeenCalledWith("child-first");

@@ -2,17 +2,15 @@ import {
   createOperationalRunInstanceRef,
   prepareAgentRunAdmission,
   type AdmittedRunContext,
-  type PreparedAgentRunAdmission,
 } from "../admitted-run-context.js";
 import { createAgentHarnessHostCapabilities } from "./host-capability.js";
 
 type HostAttempt = Parameters<typeof createAgentHarnessHostCapabilities>[0]["attempt"];
 
-export type AdmittedHostCapabilityTestFixture = Readonly<{
+type AdmittedHostCapabilityTestFixture = Readonly<{
   admittedRunContext: AdmittedRunContext;
   hostCapabilities: ReturnType<typeof createAgentHarnessHostCapabilities>["capabilities"];
-  host: () => void;
-  admission: PreparedAgentRunAdmission;
+  closeHost: () => void;
   closeAdmission: () => void;
 }>;
 
@@ -37,8 +35,7 @@ export async function createAdmittedHostCapabilityTestFixture(
   return {
     admittedRunContext,
     hostCapabilities: host.capabilities,
-    host: host.close,
-    admission,
+    closeHost: host.close,
     closeAdmission: admission.close,
   };
 }

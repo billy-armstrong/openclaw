@@ -11,6 +11,7 @@ import type {
   registerNativeHookRelay,
 } from "openclaw/plugin-sdk/agent-harness-runtime";
 import { emitTrustedDiagnosticEvent } from "openclaw/plugin-sdk/diagnostic-runtime";
+import { createDeferred } from "openclaw/plugin-sdk/extension-shared";
 import { registerRetainedNativeHookRelayForBundledRuntime } from "openclaw/plugin-sdk/native-hook-relay-runtime";
 import {
   addTimerTimeoutGraceMs,
@@ -212,14 +213,11 @@ export function createCodexNativeHookRelay(params: {
     runBeforeToolCall: params.hostCapabilities.runBeforeToolCall,
     assertActive: params.hostCapabilities.assertActive,
     retention: {
+      readClaim: readCodexNativeChildThreadId,
       shouldRetainAfterForegroundClose: () => directChildClaims.size > 0,
-      allowPreToolUse: (rawPayload) => {
-        const childThreadId = readCodexNativeChildThreadId(rawPayload);
-        return childThreadId !== undefined && directChildClaims.has(childThreadId);
-      },
-      awaitForegroundAdmission: (rawPayload) => {
-        const childThreadId = readCodexNativeChildThreadId(rawPayload);
-        if (!childThreadId || foregroundClosed) {
+      allowPreToolUse: (childThreadId) => directChildClaims.has(childThreadId),
+      awaitForegroundAdmission: (childThreadId) => {
+        if (foregroundClosed) {
           return Promise.reject(new Error("native hook relay foreground admission unavailable"));
         }
         const existingClaim = directChildClaims.get(childThreadId);
@@ -235,16 +233,11 @@ export function createCodexNativeHookRelay(params: {
             new Error("native hook relay foreground admission capacity reached"),
           );
         }
-        let resolvePending: ((claim: symbol) => void) | undefined;
-        let rejectPending: ((reason: Error) => void) | undefined;
-        const promise = new Promise<symbol>((resolve, reject) => {
-          resolvePending = resolve;
-          rejectPending = reject;
-        });
+        const { promise, resolve, reject } = createDeferred<symbol>();
         pendingDirectChildAdmissions.set(childThreadId, {
           promise,
-          resolve: (claim) => resolvePending?.(claim),
-          reject: (reason) => rejectPending?.(reason),
+          resolve,
+          reject,
         });
         return promise.then((claim) => assertClaim(childThreadId, claim));
       },
