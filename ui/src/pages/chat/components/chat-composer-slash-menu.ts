@@ -298,6 +298,7 @@ export function selectSlashCommand(
   requestUpdate: () => void,
 ) {
   const state = getChatComposerState(props.paneId);
+  const inlineReplacement = cmd.source === "skill" ? `/${cmd.name}:` : `/${cmd.name}`;
   if (beginInlineSlashArguments(cmd, props, state, requestUpdate)) {
     return;
   }
@@ -314,7 +315,7 @@ export function selectSlashCommand(
     props.onSlashCommand(`/${cmd.name}`);
     return;
   }
-  if (commitInlineSlashSelection(`/${cmd.name}`, props, state)) {
+  if (commitInlineSlashSelection(inlineReplacement, props, state)) {
     state.slashMenuOpen = false;
     resetSlashMenuState(state);
     requestUpdate();
@@ -349,10 +350,11 @@ export function tabCompleteSlashCommand(
   requestUpdate: () => void,
 ) {
   const state = getChatComposerState(props.paneId);
+  const inlineReplacement = cmd.source === "skill" ? `/${cmd.name}:` : `/${cmd.name}`;
   if (beginInlineSlashArguments(cmd, props, state, requestUpdate)) {
     return;
   }
-  if (commitInlineSlashSelection(`/${cmd.name}`, props, state)) {
+  if (commitInlineSlashSelection(inlineReplacement, props, state)) {
     state.slashMenuOpen = false;
     resetSlashMenuState(state);
     requestUpdate();

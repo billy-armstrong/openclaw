@@ -129,7 +129,7 @@ function resolveInlineSkillCommandInvocation(params: {
   skillCommands: SkillCommandSpec[];
 }): { command: SkillCommandSpec; args?: string; inline: true } | null {
   const body = params.commandBodyNormalized;
-  const directPattern = /(?:^|\s)\/([^\s:]+)(?=$|\s|:)(?:\s*:\s*)?/giu;
+  const directPattern = /(?:^|\s)\/([^\s:]+)\s*:\s*/giu;
   for (const match of body.matchAll(directPattern)) {
     const rawName = match[1] ?? "";
     if (normalizeOptionalLowercaseString(rawName) === "skill") {
@@ -146,7 +146,7 @@ function resolveInlineSkillCommandInvocation(params: {
     return { command, args: args || undefined, inline: true };
   }
 
-  const skillPattern = /(?:^|\s)\/skill(?=$|\s|:)(?:\s*:\s*|\s+)([^\s:]+)/giu;
+  const skillPattern = /(?:^|\s)\/skill\s*:\s*([^\s:]+)/giu;
   for (const match of body.matchAll(skillPattern)) {
     const command = findSkillCommand(params.skillCommands, match[1] ?? "");
     if (!command || command.modelVisible === false || match.index === undefined) {

@@ -761,7 +761,7 @@ describe("handleInlineActions", () => {
 
   it("rewrites a skill marker embedded in normal prose", async () => {
     const typing = createTypingController();
-    const body = "Please use /office_hours to build me a deployment plan";
+    const body = "Please use /office_hours: to build me a deployment plan";
     const ctx = buildTestCtx({ Body: body, CommandBody: body });
 
     const result = await handleInlineActions(
@@ -795,7 +795,7 @@ describe("handleInlineActions", () => {
 
   it("keeps unauthorized inline skill markers as plain text", async () => {
     const typing = createTypingController();
-    const body = "Please use /office_hours to build me a deployment plan";
+    const body = "Please use /office_hours: to build me a deployment plan";
     const ctx = buildTestCtx({ Body: body, CommandBody: body });
 
     const result = await handleInlineActions(
