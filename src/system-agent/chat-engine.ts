@@ -60,6 +60,12 @@ type RetainedPollReply = {
   reply: SystemAgentChatReply;
 };
 
+function isTerminalPollReply(reply: SystemAgentChatReply): boolean {
+  return (
+    reply.step === undefined && reply.wizardInputPending !== true && reply.wizardSettling !== true
+  );
+}
+
 type SystemAgentChatEngineInternals = {
   wizardDependencies?: ChatWizardHostDependencies;
   executeOperation?: typeof import("./operations.js").executeSystemAgentOperation;
@@ -218,7 +224,7 @@ export class SystemAgentChatEngine {
     const retained = this.retainedPollReplies.get(stepId);
     if (retained) {
       this.retainedPollReplies.delete(stepId);
-      if (retained.reply.text) {
+      if (retained.reply.text && isTerminalPollReply(retained.reply)) {
         this.history.push({ role: "assistant", text: retained.reply.text });
       }
       return { ...retained.reply };
@@ -238,11 +244,7 @@ export class SystemAgentChatEngine {
         const result = await this.router.finalizeWizardResult(await this.wizard.pollStep(stepId));
         this.assertActive();
         const reply = this.wizard.decorateReply({ text: result.text, action: "none" });
-        if (
-          reply.step === undefined &&
-          reply.wizardInputPending !== true &&
-          reply.wizardSettling !== true
-        ) {
+        if (reply.wizardSettling !== true) {
           this.retainedPollReplies.set(stepId, {
             expiresAtMs:
               result.passiveQrRetentionExpiresAtMs ??
@@ -271,13 +273,10 @@ export class SystemAgentChatEngine {
     ]);
     cancelTimer?.();
     if (outcome) {
-      if (
-        outcome.reply.text &&
-        outcome.reply.step === undefined &&
-        outcome.reply.wizardInputPending !== true &&
-        outcome.reply.wizardSettling !== true
-      ) {
+      if (outcome.reply.text && isTerminalPollReply(outcome.reply)) {
         this.history.push({ role: "assistant", text: outcome.reply.text });
+      }
+      if (outcome.reply.wizardSettling !== true) {
         this.retainedPollReplies.delete(stepId);
       }
       return outcome.reply;
