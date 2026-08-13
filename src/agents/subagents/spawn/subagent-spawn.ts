@@ -379,6 +379,9 @@ export async function spawnSubagentDirect(
           timeoutMs: childLaunch.timeoutMs,
         },
         childLaunch.authorization,
+        // Only native spawn owns the canonical `subagent` task row. ACP uses
+        // the shared Gateway helper but retains its metadata-gated CLI fallback.
+        { agentRunTracking: "native_subagent" },
       );
 
     const emitSpawnLifecycleHooks = createSubagentSpawnLifecycleEmitter({

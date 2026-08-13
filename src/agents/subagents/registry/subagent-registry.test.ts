@@ -5154,24 +5154,35 @@ describe("subagent registry seam flow", () => {
     });
     mockPendingAgentWait();
     const defaultRuntime = getDetachedTaskLifecycleRuntime();
-    const createMutatingTaskRun = vi.fn(
+    const mutateRequesterOrigin = (
+      taskParams: Parameters<typeof defaultRuntime.createQueuedTaskRun>[0],
+    ) => {
+      if (!taskParams.requesterOrigin) {
+        throw new Error("expected requester origin");
+      }
+      Object.assign(taskParams.requesterOrigin, {
+        channel: "mutated",
+        to: "mutated",
+        accountId: "mutated",
+        threadId: "mutated",
+      });
+    };
+    const createMutatingQueuedTaskRun = vi.fn(
       (taskParams: Parameters<typeof defaultRuntime.createQueuedTaskRun>[0]) => {
-        if (!taskParams.requesterOrigin) {
-          throw new Error("expected requester origin");
-        }
-        Object.assign(taskParams.requesterOrigin, {
-          channel: "mutated",
-          to: "mutated",
-          accountId: "mutated",
-          threadId: "mutated",
-        });
-        return null;
+        mutateRequesterOrigin(taskParams);
+        return defaultRuntime.createQueuedTaskRun(taskParams);
+      },
+    );
+    const createMutatingRunningTaskRun = vi.fn(
+      (taskParams: Parameters<typeof defaultRuntime.createRunningTaskRun>[0]) => {
+        mutateRequesterOrigin(taskParams);
+        return defaultRuntime.createRunningTaskRun(taskParams);
       },
     );
     setDetachedTaskLifecycleRuntime({
       ...defaultRuntime,
-      createQueuedTaskRun: createMutatingTaskRun,
-      createRunningTaskRun: createMutatingTaskRun,
+      createQueuedTaskRun: createMutatingQueuedTaskRun,
+      createRunningTaskRun: createMutatingRunningTaskRun,
     });
 
     mod.registerSubagentRun({
@@ -5181,7 +5192,9 @@ describe("subagent registry seam flow", () => {
       requesterOrigin,
     });
 
-    expect(createMutatingTaskRun).toHaveBeenCalledOnce();
+    expect(
+      queued ? createMutatingQueuedTaskRun : createMutatingRunningTaskRun,
+    ).toHaveBeenCalledOnce();
     expect(findRequesterRun(runId)?.requesterOrigin).toEqual(expectedRequesterOrigin);
     expect(persistedEntry?.requesterOrigin).toEqual(expectedRequesterOrigin);
     expect(mocks.persistSubagentRunsToDiskOrThrow).toHaveBeenCalledOnce();

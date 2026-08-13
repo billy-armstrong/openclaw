@@ -38,6 +38,7 @@ import {
   testing as subagentRegistryTesting,
 } from "../registry/subagent-registry.test-helpers.js";
 import { testing as swarmSchedulerTesting } from "../swarm/swarm-scheduler.test-support.js";
+import { callSubagentGateway } from "./subagent-spawn-gateway.js";
 import { spawnSubagentDirect } from "./subagent-spawn.js";
 import { testing as subagentSpawnTesting } from "./subagent-spawn.test-support.js";
 
@@ -131,6 +132,29 @@ describe("spawnSubagentDirect in-process Gateway collector launch", () => {
       })}\n`,
     );
     clearConfigCache();
+  });
+
+  it("leaves shared agent dispatches unmarked unless native spawn claims the task row", async () => {
+    const dispatchOptions: Array<
+      NonNullable<Parameters<typeof dispatchGatewayMethodInProcess>[2]> | undefined
+    > = [];
+    subagentSpawnTesting.setDepsForTest({
+      hasInProcessGatewayContext: () => true,
+      dispatchGatewayMethodInProcess: async <T>(
+        _method: string,
+        _params: Record<string, unknown>,
+        options?: NonNullable<Parameters<typeof dispatchGatewayMethodInProcess>[2]>,
+      ) => {
+        dispatchOptions.push(options);
+        return { runId: "shared-agent-run", status: "accepted" } as T;
+      },
+    });
+
+    await callSubagentGateway({ method: "agent", params: { sessionKey: "agent:main:acp:test" } });
+
+    expect(dispatchOptions).toHaveLength(1);
+    expect(dispatchOptions[0]?.forceSyntheticClient).toBe(true);
+    expect(dispatchOptions[0]?.agentRunTracking).toBeUndefined();
   });
 
   afterEach(async () => {

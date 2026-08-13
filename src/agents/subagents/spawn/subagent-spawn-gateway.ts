@@ -14,6 +14,7 @@ const MAX_SUBAGENT_AGENT_GATEWAY_TIMEOUT_MS = 300_000;
 export async function callSubagentGateway(
   params: Parameters<typeof callGateway>[0],
   authorization?: SubagentLaunchAuthorization,
+  options?: { agentRunTracking?: "native_subagent" },
 ): Promise<Awaited<ReturnType<typeof callGateway>>> {
   // Subagent lifecycle requires methods spanning multiple scope tiers
   // (sessions.delete → admin, agent → write). When each call
@@ -57,8 +58,6 @@ export async function callSubagentGateway(
     // Direct dispatch avoids self-connecting over WS while the same event loop is busy.
     // Agent launches are host-owned even when the parent request came from CLI/HTTP.
     // Reusing that external identity makes collector preflight treat the launch as spoofed.
-    // The subagent registry records the canonical `subagent` task row for a
-    // child launch, so the gateway must not also open a `cli` row for that run.
     const isChildRunLaunch = request.method === "agent";
     const forceSyntheticClient = isChildRunLaunch || scopes != null;
     return await deps.dispatchGatewayMethodInProcess(
@@ -67,7 +66,7 @@ export async function callSubagentGateway(
       {
         expectFinal: request.expectFinal,
         ...(allowModelOverride ? { allowSyntheticModelOverride: true } : {}),
-        ...(isChildRunLaunch ? { agentRunTracking: "native_subagent" as const } : {}),
+        ...(options?.agentRunTracking ? { agentRunTracking: options.agentRunTracking } : {}),
         ...(forceSyntheticClient ? { forceSyntheticClient: true } : {}),
         ...(typeof request.timeoutMs === "number" ? { timeoutMs: request.timeoutMs } : {}),
         ...(scopes != null ? { syntheticScopes: scopes } : {}),
