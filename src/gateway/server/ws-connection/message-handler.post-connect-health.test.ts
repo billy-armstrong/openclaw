@@ -1,10 +1,13 @@
 // WebSocket message-handler health tests cover post-connect startup-unavailable and health-gated dispatch.
+import { once } from "node:events";
 import type { IncomingMessage } from "node:http";
+import type { AddressInfo } from "node:net";
 import { beforeEach, describe, expect, it, onTestFinished, vi } from "vitest";
-import type { WebSocket } from "ws";
+import { WebSocket, WebSocketServer } from "ws";
 import { ConnectErrorDetailCodes } from "../../../../packages/gateway-protocol/src/connect-error-details.js";
 import { ErrorCodes, PROTOCOL_VERSION } from "../../../../packages/gateway-protocol/src/index.js";
 import { prepareSystemAgentRunAdmission } from "../../../agents/admitted-run-context.js";
+import * as nodePairingState from "../../../infra/device-pairing-node-state.js";
 import {
   onInternalDiagnosticEvent,
   resetDiagnosticEventsForTest,
@@ -22,10 +25,13 @@ import type { ResolvedGatewayAuth } from "../../auth.js";
 import type { HealthSummary } from "../../health/types.js";
 import { getGatewayLocalUserIngress } from "../../local-user-ingress.js";
 import { getOperatorApprovalRuntimeToken } from "../../operator-approval-runtime-token.js";
+import { MAX_PAYLOAD_BYTES, MAX_PREAUTH_PAYLOAD_BYTES } from "../../server-constants.js";
 import { handleGatewayRequest } from "../../server-methods.js";
 import { resolveGatewayCronCreatorAuthorityAdmission } from "../../server-methods/cron-creator-authority-admission.js";
 import type { GatewayRequestContext } from "../../server-methods/types.js";
 import { resolvePinnedClientMetadata } from "./connect-device-metadata.js";
+import * as connectNodeSession from "./connect-node-session.js";
+import { attachAuthenticatedGatewayConnect } from "./connect-session.js";
 import { GatewayNodeLifecycleDispatchTracker } from "./node-lifecycle-dispatch.js";
 
 const {
@@ -242,6 +248,7 @@ function captureSecurityEvents(): {
 function attachGatewayHarness(options: {
   connId: string;
   connectNonce: string;
+  socket?: WebSocket;
   refreshHealthSnapshot?: GatewayRequestContext["refreshHealthSnapshot"];
   requestOrigin?: string;
   requestHost?: string;
@@ -254,21 +261,24 @@ function attachGatewayHarness(options: {
   close?: CloseGatewayConnection;
   isClosed?: () => boolean;
   setCloseCause?: SetCloseCause;
+  clearHandshakeTimer?: () => void;
 }) {
   const socketSend = vi.fn((_payload: string, cb?: (err?: Error) => void) => {
     cb?.();
   });
-  let onMessage: ((data: string) => void) | undefined;
-  const socket = {
-    _receiver: {},
-    send: socketSend,
-    on: vi.fn((event: string, handler: (data: string) => void) => {
-      if (event === "message") {
-        onMessage = handler;
-      }
-      return socket;
-    }),
-  } as unknown as WebSocket;
+  let onMessage: ((data: Buffer) => void) | undefined;
+  const socket =
+    options.socket ??
+    ({
+      _receiver: { _maxPayload: MAX_PREAUTH_PAYLOAD_BYTES },
+      send: socketSend,
+      on: vi.fn((event: string, handler: (data: Buffer) => void) => {
+        if (event === "message") {
+          onMessage = handler;
+        }
+        return socket;
+      }),
+    } as unknown as WebSocket);
   const send = vi.fn();
   let client: unknown = options.client ?? null;
   const requestHost = options.requestHost ?? "127.0.0.1:19001";
@@ -279,7 +289,15 @@ function attachGatewayHarness(options: {
     allowTailscale: false,
   };
   const advanceHandshakePhase = vi.fn();
+  const clearHandshakeTimer = options.clearHandshakeTimer ?? vi.fn();
   const logWsControl = createLogger();
+  const setClient = vi.fn((next: unknown) => {
+    if (options.isClosed?.()) {
+      return false;
+    }
+    client = next;
+    return true;
+  });
   attachGatewayWsMessageHandler({
     socket,
     upgradeReq: {
@@ -308,12 +326,9 @@ function attachGatewayHarness(options: {
     send,
     close: options.close ?? createCloseMock(),
     isClosed: options.isClosed ?? vi.fn(() => false),
-    clearHandshakeTimer: vi.fn(),
+    clearHandshakeTimer,
     getClient: () => client as never,
-    setClient: (next) => {
-      client = next;
-      return true;
-    },
+    setClient,
     setHandshakeState: vi.fn(),
     advanceHandshakePhase,
     setCloseCause: options.setCloseCause ?? createSetCloseCauseMock(),
@@ -323,14 +338,22 @@ function attachGatewayHarness(options: {
     logHealth: createLogger() as never,
     logWsControl: logWsControl as never,
   });
-  if (onMessage === undefined) {
+  if (onMessage === undefined && !options.socket) {
     throw new Error("expected websocket message handler");
   }
-  const sendMessage = onMessage;
+  const sendMessage = (data: string) => {
+    if (!onMessage) {
+      throw new Error("synthetic websocket message handler is unavailable for a real socket");
+    }
+    onMessage(Buffer.from(data));
+  };
   return {
     advanceHandshakePhase,
+    clearHandshakeTimer,
     logWsControl,
     send,
+    setClient,
+    socket,
     socketSend,
     sendRequest: (
       id: string,
@@ -467,6 +490,323 @@ describe("attachGatewayWsMessageHandler post-connect health refresh", () => {
   beforeEach(() => {
     resetDiagnosticEventsForTest();
     vi.clearAllMocks();
+  });
+
+  it("keeps the handshake watchdog until the client is registered", async () => {
+    const clearHandshakeTimer = vi.fn();
+    const harness = attachGatewayHarness({
+      connId: "conn-watchdog-client-ownership",
+      connectNonce: "nonce-watchdog-client-ownership",
+      clearHandshakeTimer,
+    });
+    const receiver = Reflect.get(harness.socket as object, "_receiver") as object;
+    expect(Reflect.get(receiver, "_maxPayload")).toBe(MAX_PREAUTH_PAYLOAD_BYTES);
+
+    harness.sendConnect("watchdog-connect", {
+      minProtocol: PROTOCOL_VERSION,
+      maxProtocol: PROTOCOL_VERSION,
+      client: {
+        id: "gateway-client",
+        version: "dev",
+        platform: "test",
+        mode: "backend",
+      },
+      role: "operator",
+      caps: [],
+    });
+
+    await waitForFast(() => {
+      expect(harness.setClient).toHaveBeenCalledOnce();
+      expect(clearHandshakeTimer).toHaveBeenCalledOnce();
+      expect(harness.socketSend).toHaveBeenCalledOnce();
+    });
+    expect(Reflect.get(receiver, "_maxPayload")).toBe(MAX_PAYLOAD_BYTES);
+    expect(harness.setClient.mock.invocationCallOrder[0]).toBeLessThan(
+      clearHandshakeTimer.mock.invocationCallOrder[0] ?? Number.POSITIVE_INFINITY,
+    );
+  });
+
+  it("keeps the watchdog and preauth cap while node pairing revalidation is pending", async () => {
+    const prepareNodeConnect = vi
+      .spyOn(connectNodeSession, "prepareGatewayNodeConnect")
+      .mockResolvedValue(true);
+    let resolveRevalidation!: (value: null) => void;
+    const pendingRevalidation = new Promise<null>((resolve) => {
+      resolveRevalidation = resolve;
+    });
+    const captureNodePairingState = vi
+      .spyOn(nodePairingState, "captureAuthenticatedNodePairingState")
+      .mockResolvedValueOnce({
+        identity: { nodeId: "watchdog-node", key: "watchdog-identity" },
+        generation: { nodeId: "watchdog-node", key: "watchdog-generation" },
+      })
+      .mockReturnValueOnce(pendingRevalidation);
+    const clearHandshakeTimer = vi.fn();
+    const setClient = vi.fn(() => true);
+    const close = createCloseMock();
+    const logger = createLogger();
+    const connectParams = {
+      minProtocol: PROTOCOL_VERSION,
+      maxProtocol: PROTOCOL_VERSION,
+      client: {
+        id: "node-host",
+        version: "dev",
+        platform: "test",
+        mode: "node",
+        instanceId: "watchdog-node",
+      },
+      role: "node",
+      scopes: [],
+      auth: { deviceToken: "watchdog-token" },
+      device: { id: "watchdog-node" },
+    };
+    const context = {
+      handler: {
+        socket: { _receiver: { _maxPayload: MAX_PREAUTH_PAYLOAD_BYTES } },
+        upgradeReq: { headers: {} },
+        connId: "conn-pending-node-watchdog",
+        remoteAddr: "127.0.0.1",
+        pluginNodeCapabilities: [],
+        buildRequestContext: () => ({}),
+        close,
+        isClosed: () => false,
+        clearHandshakeTimer,
+        setClient,
+        setHandshakeState: vi.fn(),
+        advanceHandshakePhase: vi.fn(),
+        setCloseCause: vi.fn(),
+        logGateway: logger,
+        logWsControl: logger,
+      },
+      connectParams,
+      isLocalClient: true,
+      reportedClientIp: "127.0.0.1",
+      runDetachedConnectWork: vi.fn(),
+      isWebchatConnect: () => false,
+      clientLabel: "node-host",
+      clientMeta: {},
+      markHandshakeFailure: vi.fn(),
+      sendHandshakeErrorResponse: vi.fn(),
+      releasePendingNodePairingCleanup: vi.fn(async () => {}),
+      pendingNodePairingCleanup: {},
+      configSnapshot: loadConfigMock(),
+    } as unknown as Parameters<typeof attachAuthenticatedGatewayConnect>[0];
+    const state = {
+      minProtocol: PROTOCOL_VERSION,
+      maxProtocol: PROTOCOL_VERSION,
+      usesLegacyNodeProtocol: false,
+      role: "node",
+      scopes: [],
+      device: { id: "watchdog-node" },
+      devicePublicKey: "watchdog-public-key",
+      deviceToken: { token: "watchdog-token" },
+      authResult: { ok: true },
+      authMethod: "device-token",
+      pairingLocality: "local",
+      sessionUsesSharedGatewayAuth: false,
+      controlUiDeviceAuthMigrationPending: false,
+      bootstrapDeviceTokens: [],
+    } as unknown as Parameters<typeof attachAuthenticatedGatewayConnect>[1];
+
+    try {
+      const pendingAdmission = attachAuthenticatedGatewayConnect(context, state);
+      await waitForFast(() => {
+        expect(captureNodePairingState).toHaveBeenCalledTimes(2);
+      });
+      expect(clearHandshakeTimer).not.toHaveBeenCalled();
+      expect(setClient).not.toHaveBeenCalled();
+      expect(context.handler.socket).toMatchObject({
+        _receiver: { _maxPayload: MAX_PREAUTH_PAYLOAD_BYTES },
+      });
+      resolveRevalidation(null);
+      await pendingAdmission;
+
+      expect(close).toHaveBeenCalledOnce();
+      expect(close).toHaveBeenCalledWith(1008, "node pairing changed during connect");
+      expect(clearHandshakeTimer).not.toHaveBeenCalled();
+      expect(setClient).not.toHaveBeenCalled();
+      expect(context.handler.socket).toMatchObject({
+        _receiver: { _maxPayload: MAX_PREAUTH_PAYLOAD_BYTES },
+      });
+    } finally {
+      captureNodePairingState.mockRestore();
+      prepareNodeConnect.mockRestore();
+    }
+  });
+
+  it("rejects an oversized queued frame before the initial handshake completes", async () => {
+    let closed = false;
+    const close = vi.fn<CloseGatewayConnection>(() => {
+      closed = true;
+    });
+    const setCloseCause = createSetCloseCauseMock();
+    const refreshHealthSnapshot = vi.fn(async () => createHealthSummary());
+    const harness = attachGatewayHarness({
+      connId: "conn-oversized-queued-connect",
+      connectNonce: "nonce-oversized-queued-connect",
+      close,
+      isClosed: () => closed,
+      refreshHealthSnapshot,
+      setCloseCause,
+    });
+    const connectParams = {
+      minProtocol: PROTOCOL_VERSION,
+      maxProtocol: PROTOCOL_VERSION,
+      client: {
+        id: "gateway-client",
+        version: "dev",
+        platform: "test",
+        mode: "backend",
+      },
+      role: "operator",
+      caps: [],
+    };
+
+    harness.sendConnect("connect-before-oversized-frame", connectParams);
+    harness.sendConnect("oversized-queued-connect", {
+      ...connectParams,
+      pathEnv: "x".repeat(MAX_PREAUTH_PAYLOAD_BYTES + 1),
+    });
+
+    await waitForFast(() => {
+      expect(close).toHaveBeenCalledWith(1009, "preauth payload too large");
+      expect(setCloseCause).toHaveBeenCalledWith(
+        "preauth-payload-too-large",
+        expect.objectContaining({
+          limitBytes: MAX_PREAUTH_PAYLOAD_BYTES,
+          payloadBytes: expect.any(Number),
+        }),
+      );
+    });
+    expect(harness.client).toBeNull();
+    expect(harness.setClient).not.toHaveBeenCalled();
+    expect(harness.socketSend).not.toHaveBeenCalled();
+    expect(refreshHealthSnapshot).not.toHaveBeenCalled();
+    expect(handleGatewayRequest).not.toHaveBeenCalled();
+  });
+
+  it("rejects a seventeenth frame queued behind the initial handshake", async () => {
+    let closed = false;
+    const close = vi.fn<CloseGatewayConnection>(() => {
+      closed = true;
+    });
+    const setCloseCause = createSetCloseCauseMock();
+    const harness = attachGatewayHarness({
+      connId: "conn-handshake-frame-overflow",
+      connectNonce: "nonce-handshake-frame-overflow",
+      close,
+      isClosed: () => closed,
+      setCloseCause,
+    });
+    const connectParams = {
+      minProtocol: PROTOCOL_VERSION,
+      maxProtocol: PROTOCOL_VERSION,
+      client: {
+        id: "gateway-client",
+        version: "dev",
+        platform: "test",
+        mode: "backend",
+      },
+      role: "operator",
+      caps: [],
+    };
+
+    for (let index = 0; index < 18; index += 1) {
+      harness.sendConnect(`overflow-connect-${index}`, connectParams);
+    }
+
+    await waitForFast(() => {
+      expect(close).toHaveBeenCalledWith(1008, "too many pending handshake frames");
+    });
+    expect(setCloseCause).toHaveBeenCalledWith("handshake-message-overflow", {
+      queuedFrames: 16,
+    });
+    expect(harness.client).toBeNull();
+    expect(harness.setClient).not.toHaveBeenCalled();
+  });
+
+  it("sends one hello then dispatches pipelined frames on a real WebSocket", async () => {
+    const server = new WebSocketServer({ host: "127.0.0.1", port: 0 });
+    await once(server, "listening");
+    const address = server.address();
+    if (!address || typeof address === "string") {
+      await new Promise<void>((resolve) => {
+        server.close(() => resolve());
+      });
+      throw new Error("expected the WebSocket server to bind an ephemeral TCP port");
+    }
+
+    const connection = once(server, "connection");
+    const socket = new WebSocket(`ws://127.0.0.1:${(address as AddressInfo).port}`);
+    const receivedFrames: Array<{ id?: string; ok?: boolean; payload?: { type?: string } }> = [];
+    socket.on("message", (data) => {
+      const payload = Buffer.isBuffer(data) ? data : Buffer.from(data as ArrayBuffer);
+      receivedFrames.push(JSON.parse(payload.toString("utf8")) as (typeof receivedFrames)[number]);
+    });
+
+    try {
+      await once(socket, "open");
+      const [serverSocket] = (await connection) as [WebSocket, IncomingMessage];
+      const refreshHealthSnapshot = vi.fn(async () => createHealthSummary());
+      const harness = attachGatewayHarness({
+        connId: "conn-real-pipelined-connect",
+        connectNonce: "nonce-real-pipelined-connect",
+        refreshHealthSnapshot,
+        socket: serverSocket,
+      });
+      const connectParams = {
+        minProtocol: PROTOCOL_VERSION,
+        maxProtocol: PROTOCOL_VERSION,
+        client: {
+          id: "gateway-client",
+          version: "dev",
+          platform: "test",
+          mode: "backend",
+        },
+        role: "operator",
+        caps: [],
+      };
+
+      for (let index = 0; index < 8; index += 1) {
+        socket.send(
+          JSON.stringify({
+            type: "req",
+            id: `real-connect-${index}`,
+            method: "connect",
+            params: connectParams,
+          }),
+        );
+      }
+
+      await waitForFast(() => {
+        expect(harness.setClient).toHaveBeenCalledOnce();
+        expect(receivedFrames).toHaveLength(1);
+        expect(receivedFrames[0]).toMatchObject({
+          id: "real-connect-0",
+          ok: true,
+          payload: { type: "hello-ok" },
+        });
+        expect(refreshHealthSnapshot).toHaveBeenCalledOnce();
+        expect(handleGatewayRequest).toHaveBeenCalledTimes(7);
+      });
+      expect(vi.mocked(handleGatewayRequest).mock.calls.map(([call]) => call.req.id)).toEqual([
+        "real-connect-1",
+        "real-connect-2",
+        "real-connect-3",
+        "real-connect-4",
+        "real-connect-5",
+        "real-connect-6",
+        "real-connect-7",
+      ]);
+    } finally {
+      socket.terminate();
+      for (const client of server.clients) {
+        client.terminate();
+      }
+      await new Promise<void>((resolve, reject) => {
+        server.close((error) => (error ? reject(error) : resolve()));
+      });
+    }
   });
 
   it("closes invalidated clients before dispatching queued requests", () => {
