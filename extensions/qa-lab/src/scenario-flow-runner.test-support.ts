@@ -1,6 +1,12 @@
 import { createQaBusState } from "./bus-state.js";
 import { readQaScenarioById, type QaScenarioFlow } from "./scenario-catalog.js";
 import { runScenarioFlow } from "./scenario-flow-runner.js";
+import {
+  evaluateForkedSubagentEvidence,
+  evaluateSubagentHandoffEvidence,
+  summarizeForkedSubagentFailure,
+  summarizeSubagentHandoffFailure,
+} from "./subagent-scenario-evidence.js";
 
 type QaFlowStep = {
   name: string;
@@ -162,6 +168,10 @@ export async function runLoadedScenarioFlow(
         steps: stepResults,
       };
     },
+    evaluateForkedSubagentEvidence,
+    evaluateSubagentHandoffEvidence,
+    summarizeForkedSubagentFailure,
+    summarizeSubagentHandoffFailure,
     ...params.api,
   };
 

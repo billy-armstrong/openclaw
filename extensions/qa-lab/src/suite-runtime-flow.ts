@@ -26,6 +26,12 @@ import {
   type QaScenarioRuntimeDeps,
   type QaScenarioRuntimeEnv,
 } from "./scenario-runtime-api.js";
+import {
+  evaluateForkedSubagentEvidence,
+  evaluateSubagentHandoffEvidence,
+  summarizeForkedSubagentFailure,
+  summarizeSubagentHandoffFailure,
+} from "./subagent-scenario-evidence.js";
 import * as suiteRuntimeAgent from "./suite-runtime-agent.js";
 import * as suiteRuntimeGateway from "./suite-runtime-gateway.js";
 import * as suiteRuntimeTransport from "./suite-runtime-transport.js";
@@ -80,6 +86,10 @@ const qaSuiteScenarioIdentityDeps = {
   ...suiteRuntimeGateway,
   ...suiteRuntimeTransport,
   ...extractToolPayload,
+  evaluateForkedSubagentEvidence,
+  evaluateSubagentHandoffEvidence,
+  summarizeForkedSubagentFailure,
+  summarizeSubagentHandoffFailure,
   waitForCronRunCompletion: cronRunWait.waitForCronRunCompletion,
   hasDiscoveryLabels: discoveryEval.hasDiscoveryLabels,
   reportsDiscoveryScopeLeak: discoveryEval.reportsDiscoveryScopeLeak,

@@ -17,6 +17,7 @@ import {
   buildAssistantText,
   isCanonicalCompactionRetryWriteResult,
   QA_COMPACTION_RETRY_FINAL_MARKER,
+  readCompletedSubagentHandoffResult,
 } from "./mock-openai-assistant-text.js";
 import {
   type ResponsesInputItem,
@@ -850,6 +851,11 @@ async function buildResponsesPayload(
           ? QA_COMPACTION_RETRY_HISTORICAL_SUMMARY
           : resolveCompactionRecoverySummary(allInputText),
     );
+  }
+  if (readCompletedSubagentHandoffResult(allInputText)) {
+    // A canonical child completion owns this continuation even when its result
+    // contains stale prompt markers from earlier parent turns.
+    return buildAssistantEvents(buildAssistantText(input, body));
   }
   if (
     QA_COMPACTION_RETRY_PROMPT_RE.test(allInputText) ||
@@ -2412,8 +2418,48 @@ export async function startQaMockOpenAiServer(params?: {
   let lastRequest: MockOpenAiRequestSnapshot | null = null;
   const requests: MockOpenAiRequestSnapshot[] = [];
   let nextRequestCursor = 1;
-  const recordRequest = (snapshot: MockOpenAiRequestSnapshotInput) => {
-    const recorded = { ...snapshot, cursor: nextRequestCursor++ };
+  const recordRequest = (snapshot: MockOpenAiRequestSnapshotInput, events: StreamEvent[] = []) => {
+    const completedHandoffResult = readCompletedSubagentHandoffResult(snapshot.allInputText);
+    const emittedAssistantTexts = events.flatMap((event) => {
+      if (event.type !== "response.output_item.done" || event.item.type !== "message") {
+        return [];
+      }
+      const content = event.item.content;
+      if (!Array.isArray(content)) {
+        return [];
+      }
+      return content.flatMap((block) => {
+        if (!block || typeof block !== "object" || Array.isArray(block)) {
+          return [];
+        }
+        const text = (block as { text?: unknown }).text;
+        return typeof text === "string" && text.trim() ? [text] : [];
+      });
+    });
+    const recorded = {
+      ...snapshot,
+      cursor: nextRequestCursor++,
+      hasReadableCompletedHandoffResult: Boolean(completedHandoffResult),
+      emittedAssistantHasDelegatedSection: emittedAssistantTexts.some((text) =>
+        /(?:^|\n)\s*delegated task\s*:/iu.test(text),
+      ),
+      emittedAssistantHasResultSection: emittedAssistantTexts.some((text) =>
+        /(?:^|\n)\s*result\s*:/iu.test(text),
+      ),
+      emittedAssistantHasEvidenceSection: emittedAssistantTexts.some((text) =>
+        /(?:^|\n)\s*evidence\s*:/iu.test(text),
+      ),
+      emittedAssistantContainsParsedChild: Boolean(
+        completedHandoffResult &&
+        emittedAssistantTexts.some((text) =>
+          text.replace(/\s+/gu, " ").includes(completedHandoffResult),
+        ),
+      ),
+      emittedAssistantIsFunctionCall: events.some(
+        (event) =>
+          event.type === "response.output_item.done" && event.item.type === "function_call",
+      ),
+    } satisfies MockOpenAiRequestSnapshot;
     lastRequest = recorded;
     requests.push(recorded);
     if (requests.length > MOCK_OPENAI_DEBUG_REQUEST_LIMIT) {
@@ -2574,25 +2620,28 @@ export async function startQaMockOpenAiServer(params?: {
             message: "Service Unavailable",
           }
         : undefined);
-    recordRequest({
-      ...requestSnapshotBase,
-      outcome:
-        failure || events.some((event) => event.type === "response.failed") ? "error" : "success",
-      ...(events.some((event) => event.type === "response.failed")
-        ? { errorCode: "response_failed_no_details" }
-        : {}),
-      plannedToolCallId: plannedToolIdentity.callId,
-      ...(request.route === "responses" && plannedToolIdentity.itemId
-        ? { plannedToolItemId: plannedToolIdentity.itemId }
-        : {}),
-      plannedToolName: plannedTool.name,
-      ...(plannedTool.wireName && plannedTool.wireName !== plannedTool.name
-        ? { plannedWireToolName: plannedTool.wireName }
-        : {}),
-      plannedToolArgs: plannedTool.args,
-      toolOutputCallId: extractToolOutputCallId(input) || undefined,
-      ...(extractToolOutputStructuredError(input) ? { toolOutputStructuredError: true } : {}),
-    });
+    recordRequest(
+      {
+        ...requestSnapshotBase,
+        outcome:
+          failure || events.some((event) => event.type === "response.failed") ? "error" : "success",
+        ...(events.some((event) => event.type === "response.failed")
+          ? { errorCode: "response_failed_no_details" }
+          : {}),
+        plannedToolCallId: plannedToolIdentity.callId,
+        ...(request.route === "responses" && plannedToolIdentity.itemId
+          ? { plannedToolItemId: plannedToolIdentity.itemId }
+          : {}),
+        plannedToolName: plannedTool.name,
+        ...(plannedTool.wireName && plannedTool.wireName !== plannedTool.name
+          ? { plannedWireToolName: plannedTool.wireName }
+          : {}),
+        plannedToolArgs: plannedTool.args,
+        toolOutputCallId: extractToolOutputCallId(input) || undefined,
+        ...(extractToolOutputStructuredError(input) ? { toolOutputStructuredError: true } : {}),
+      },
+      events,
+    );
     return {
       events,
       model,

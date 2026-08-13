@@ -106,6 +106,12 @@ function readAssistantToolCalls(message: Record<string, unknown>): Array<{
   });
 }
 
+function isQaDeliveryMirror(message: Record<string, unknown>): boolean {
+  // Provider/model provenance distinguishes OpenClaw delivery bookkeeping from
+  // real model output; marker-only historical rows are not strong QA evidence.
+  return message.provider === "openclaw" && message.model === "delivery-mirror";
+}
+
 function summarizeSessionTranscriptEvents(
   events: unknown[],
   sessionKey: string,
@@ -124,6 +130,7 @@ function summarizeSessionTranscriptEvents(
   const completedToolCallIds = new Set<string>();
   const successfulToolCallIds = new Set<string>();
   let finalText = "";
+  let hasCurrentTurnProviderFinalText = false;
   let lastAssistantContentTypes: string[] = [];
   let lastAssistantErrorMessage: string | undefined;
   let lastAssistantStopReason: string | undefined;
@@ -149,9 +156,11 @@ function summarizeSessionTranscriptEvents(
     lastMessageRole = readNonEmptyString(message.role);
     if (message.role === "user") {
       userMessageCount += 1;
+      hasCurrentTurnProviderFinalText = false;
       continue;
     }
     if (message.role === "toolResult") {
+      hasCurrentTurnProviderFinalText = false;
       const toolCallId = readNonEmptyString(message.toolCallId);
       const toolName = readNonEmptyString(message.toolName);
       if (
@@ -191,7 +200,14 @@ function summarizeSessionTranscriptEvents(
     }
     const text = extractGatewayMessageText(message);
     if (text) {
-      finalText = text;
+      // A same-turn delivery mirror cannot replace the provider's final. After
+      // a user/tool boundary, a mirror may be the only legitimate reply.
+      if (!isQaDeliveryMirror(message) || !hasCurrentTurnProviderFinalText) {
+        finalText = text;
+      }
+      if (!isQaDeliveryMirror(message)) {
+        hasCurrentTurnProviderFinalText = true;
+      }
     }
     const openClawMeta = isRecord(message["__openclaw"]) ? message["__openclaw"] : undefined;
     const mirrorIdentity = readNonEmptyString(openClawMeta?.mirrorIdentity);
