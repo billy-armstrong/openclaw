@@ -25,13 +25,5 @@ export default {
       files: ["**/*.ts"],
       customSyntax: "postcss-lit",
     },
-    {
-      files: ["ui/src/components/file-preview-modal.ts"],
-      rules: {
-        // Shortcut-key chrome is intentionally reopened beside the modal footer;
-        // keep every other selector in this Lit stylesheet enforced.
-        "no-duplicate-selectors": [true, { ignoreSelectors: [".kbd"] }],
-      },
-    },
   ],
 };
