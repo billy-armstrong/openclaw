@@ -998,7 +998,7 @@ export async function consumeGoogleGenerateContentStream<T extends GoogleApiType
   }
 
   if (params.output.stopReason === "aborted" || params.output.stopReason === "error") {
-    throw new Error(params.output.errorMessage ?? "An unknown error occurred");
+    throw new Error("An unknown error occurred");
   }
 
   params.stream.push({
