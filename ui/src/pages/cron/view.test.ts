@@ -1069,6 +1069,11 @@ describe("cron view editor", () => {
     expect(model.querySelector('wa-option[value="openai/gpt-5.2"]')).not.toBeNull();
     expect(model.querySelector('[data-provider-icon="codex"]')).not.toBeNull();
     expect(container.querySelector<HTMLInputElement>("#cron-payload-model")?.hidden).toBe(true);
+    // The inherit option must resolve to a real catalog string — a missing key
+    // renders the raw "common.default" literal to every locale.
+    const inheritOption = model.querySelector('wa-option[value=""]');
+    expect(inheritOption?.textContent).toContain("Default");
+    expect(inheritOption?.textContent).not.toContain("common.default");
   });
 });
 
