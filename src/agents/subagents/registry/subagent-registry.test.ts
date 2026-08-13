@@ -5201,6 +5201,40 @@ describe("subagent registry seam flow", () => {
     expect(mocks.persistSubagentRunsToDisk).not.toHaveBeenCalled();
   });
 
+  const optionalTaskRowFaults: Array<[label: string, createTaskRun: () => null]> = [
+    ["returns no row", () => null],
+    [
+      "throws",
+      () => {
+        throw new Error("task store unavailable");
+      },
+    ],
+  ];
+  it.each(optionalTaskRowFaults)(
+    "keeps ACP-style registry ownership when the secondary task runtime %s",
+    (_label, createTaskRun) => {
+      const runId = `run-acp-task-fault-${_label.replaceAll(" ", "-")}`;
+      setDetachedTaskLifecycleRuntime({
+        ...getDetachedTaskLifecycleRuntime(),
+        createQueuedTaskRun: createTaskRun,
+        createRunningTaskRun: createTaskRun,
+      });
+      mockPendingAgentWait();
+
+      expect(() =>
+        mod.registerSubagentRun({
+          runId,
+          task: "preserve ACP registry ownership",
+        }),
+      ).not.toThrow();
+
+      expect(findRequesterRun(runId)).toMatchObject({
+        runId,
+        task: "preserve ACP registry ownership",
+      });
+    },
+  );
+
   it("retains an already-running replacement when its durable write fails", () => {
     mockPendingAgentWait();
     mod.registerSubagentRun({

@@ -83,6 +83,10 @@ export type RegisterSubagentRunParams = {
   outputSchema?: Record<string, unknown>;
   queuedLaunch?: SwarmQueuedLaunch;
   queued?: boolean;
+  /** Native spawn suppresses the Gateway fallback row and can abort an accepted run.
+      Other backends already own their task row and must not lose registry ownership
+      when this secondary task-row write is unavailable. */
+  requiresTaskRow?: boolean;
 };
 
 export class SubagentLaunchManager extends SubagentRecoveryManager {
@@ -218,14 +222,21 @@ export class SubagentLaunchManager extends SubagentRecoveryManager {
             lastEventAt: now,
           });
       if (!task) {
-        throw new Error(`detached task runtime created no task row for run ${runId}`);
+        if (registerParams.requiresTaskRow === true) {
+          throw new Error(`detached task runtime created no task row for run ${runId}`);
+        }
+        log.warn("Failed to persist background task for subagent run", { runId });
       }
     } catch (error) {
-      // Native spawn suppresses the Gateway's CLI fallback because this registration owns
-      // the tasks-rail row. Roll back so the caller aborts instead of hiding a live run.
-      rollbackRegistration();
-      this.options.persistOrThrow(...registeredRunIds);
-      throw error;
+      if (registerParams.requiresTaskRow !== true) {
+        log.warn("Failed to create background task for subagent run", { runId, error });
+      } else {
+        // Native spawn suppresses the Gateway's CLI fallback because this registration owns
+        // the tasks-rail row. Roll back so the caller aborts instead of hiding a live run.
+        rollbackRegistration();
+        this.options.persistOrThrow(...registeredRunIds);
+        throw error;
+      }
     }
     this.options.ensureListener();
     // Always start sweeper — session-mode runs (no archiveAtMs) also need TTL cleanup.
