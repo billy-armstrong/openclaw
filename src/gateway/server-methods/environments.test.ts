@@ -211,7 +211,7 @@ afterEach(() => vi.restoreAllMocks());
 
 describe("environment gateway methods", () => {
   it("projects live node session-host capability without a worker service", async () => {
-    vi.mocked(isNodeRunnerSessionHost).mockReturnValue(true);
+    vi.mocked(isNodeRunnerSessionHost).mockImplementation(({ nodeId }) => nodeId === "node-live");
     const [ok, payload] = await callEnvironmentMethod("environments.list", {});
 
     expect(ok).toBe(true);
@@ -248,18 +248,6 @@ describe("environment gateway methods", () => {
         },
       ],
     });
-  });
-
-  it("marks only the current worker-build node as a session host", async () => {
-    vi.mocked(isNodeRunnerSessionHost).mockImplementation(({ nodeId }) => nodeId === "node-live");
-
-    const [ok, payload] = await callEnvironmentMethod("environments.list", {});
-
-    expect(ok).toBe(true);
-    const environments = (payload as { environments: Array<{ id: string; sessionHost?: boolean }> })
-      .environments;
-    expect(environments.find((entry) => entry.id === "node:node-live")?.sessionHost).toBe(true);
-    expect(environments.find((entry) => entry.id === "node:node-offline")?.sessionHost).toBe(false);
   });
 
   it("marks only connected, advertised, and explicitly allowed nodes as desktop sources", async () => {
