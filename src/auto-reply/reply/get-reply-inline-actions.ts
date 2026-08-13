@@ -341,18 +341,17 @@ export async function handleInlineActions(params: {
 
   const standaloneSlashName = getStandaloneSlashCommandName(command.commandBodyNormalized);
   const inlineSkillMarkerNames = listColonMarkedInlineSkillNames(command.commandBodyNormalized);
-  const hasSkillReferences =
-    command.isAuthorizedSender &&
-    ctx.Surface === INTERNAL_MESSAGE_CHANNEL &&
-    hasSkillReferenceCandidate(initialCleanedBody);
+  const canUseInlineSkills = command.isAuthorizedSender && ctx.Surface === INTERNAL_MESSAGE_CHANNEL;
+  const hasSkillReferences = canUseInlineSkills && hasSkillReferenceCandidate(initialCleanedBody);
   const shouldLoadSkillCommands =
     allowTextCommands &&
     (hasSkillReferences ||
       (standaloneSlashName !== null &&
         (standaloneSlashName === "skill" || !getBuiltinSlashCommands().has(standaloneSlashName))) ||
-      inlineSkillMarkerNames.some(
-        (name) => name === "skill" || !getBuiltinSlashCommands().has(name),
-      ));
+      (canUseInlineSkills &&
+        inlineSkillMarkerNames.some(
+          (name) => name === "skill" || !getBuiltinSlashCommands().has(name),
+        )));
   const canReusePreloadedSkillCommands = execOverrides === undefined;
   const skillCommands =
     shouldLoadSkillCommands &&
@@ -381,13 +380,7 @@ export async function handleInlineActions(params: {
           skillCommands,
         })
       : null;
-  if (
-    !skillInvocation &&
-    allowTextCommands &&
-    skillCommands.length > 0 &&
-    command.isAuthorizedSender &&
-    ctx.Surface === INTERNAL_MESSAGE_CHANNEL
-  ) {
+  if (!skillInvocation && allowTextCommands && skillCommands.length > 0 && canUseInlineSkills) {
     skillInvocation = resolveInlineSkillCommandInvocation({
       commandBodyNormalized: command.commandBodyNormalized,
       skillCommands,

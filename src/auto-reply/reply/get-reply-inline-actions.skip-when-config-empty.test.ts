@@ -849,13 +849,13 @@ describe("handleInlineActions", () => {
         overrides: {
           allowTextCommands: true,
           cfg: { commands: { text: true } },
-          skillCommands: officeHoursSkillCommands(),
         },
       }),
     );
 
     expect(result).toMatchObject({ kind: "continue", cleanedBody: body });
     expect(ctx.Body).toBe(body);
+    expect(listSkillCommandsForWorkspaceMock).not.toHaveBeenCalled();
     expect(handleCommandsMock).not.toHaveBeenCalled();
   });
 
