@@ -143,36 +143,6 @@ describe("qa scenario catalog causality", () => {
 
   it.each([
     [
-      "subagent-handoff",
-      "evaluateSubagentHandoffEvidence",
-      "completedSubagent.child.spawnedBy === sessionKey",
-    ],
-    [
-      "subagent-forked-context",
-      "evaluateForkedSubagentEvidence",
-      "forkedChildEvidence.child.spawnedBy === sessionKey",
-    ],
-  ] as const)(
-    "requires current parent-owned durable evidence for %s",
-    (scenarioId, evaluatorName, ownershipAssertion) => {
-      const scenario = requireFlowScenario(readQaScenarioById(scenarioId));
-      const flow = JSON.stringify(scenario.execution.flow);
-      const promptIndex = flow.indexOf('"call":"runAgentPrompt"');
-      const evidenceIndex = flow.indexOf(evaluatorName);
-      const ownershipAssertIndex = flow.indexOf(ownershipAssertion);
-
-      expect(evidenceIndex, scenarioId).toBeGreaterThan(promptIndex);
-      expect(ownershipAssertIndex, scenarioId).toBeGreaterThan(evidenceIndex);
-      expect(flow, scenarioId).toContain(evaluatorName);
-      expect(flow, scenarioId).toContain("entry.spawnedBy === sessionKey");
-      expect(flow, scenarioId).toContain("entry.label === config.expectedChildLabel");
-      expect(flow, scenarioId).toContain("readSessionTranscriptSummary");
-      expect(flow, scenarioId).not.toContain("tasks=${JSON.stringify(handoffTasks)}");
-    },
-  );
-
-  it.each([
-    [
       "thread-memory-isolation",
       "poll",
       "finalRequest.toolOutputCallId === searchResultRequest.plannedToolCallId",

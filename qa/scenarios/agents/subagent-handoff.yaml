@@ -34,132 +34,50 @@ flow:
         - set: sessionKey
           value:
             expr: "`agent:qa:subagent-handoff:${randomUUID().slice(0, 8)}`"
-        - try:
-            actions:
-              - set: requestCursorBefore
-                value:
-                  expr: "env.mock ? (await fetchJson(`${env.mock.baseUrl}/debug/request-cursor`)).cursor : 0"
-              - call: runAgentPrompt
-                args:
-                  - ref: env
-                  - sessionKey:
-                      ref: sessionKey
-                    message:
-                      expr: config.prompt
-                    timeoutMs:
-                      expr: liveTurnTimeoutMs(env, 90000)
-              - call: waitForAgentHistoryReply
-                saveAs: outbound
-                args:
-                  - ref: env
-                  - ref: sessionKey
-                  - lambda:
-                      params: [text]
-                      expr: "(() => { const lower = normalizeLowercaseStringOrEmpty(text); return lower.includes('delegated task') && lower.includes('result') && lower.includes('evidence') && !lower.includes('waiting'); })()"
-                  - expr: liveTurnTimeoutMs(env, 45000)
-                  - expr: "env.providerMode === 'mock-openai' ? 100 : 250"
-            catchAs: handoffError
-            catch:
-              - set: handoffStallSummary
-                value:
-                  expr: >-
-                    (async () => {
-                      const [sessionStore, tasksPayload, mockRequests] = await Promise.all([
-                        readRawQaSessionStore(env).catch(() => ({})),
-                        runQaCli(env, ['tasks', 'list', '--json', '--runtime', 'subagent'], {
-                          timeoutMs: liveTurnTimeoutMs(env, 60000),
-                          json: true,
-                        }).catch(() => ({ tasks: [] })),
-                        env.mock
-                          ? fetchJson(`${env.mock.baseUrl}/debug/requests?after=${requestCursorBefore}`).catch(() => [])
-                          : Promise.resolve([]),
-                      ]);
-                      return summarizeSubagentHandoffFailure({
-                        requesterSessionKey: sessionKey,
-                        expectedChildLabel: config.expectedChildLabel,
-                        sessionStore,
-                        tasksPayload,
-                        mockRequests,
-                      });
-                    })()
-              - throw:
-                  expr: "`subagent handoff stalled: ${formatErrorMessage(handoffError)}; shape=${JSON.stringify(handoffStallSummary)}`"
+        - set: requestCursorBefore
+          value:
+            expr: "env.mock ? (await fetchJson(`${env.mock.baseUrl}/debug/request-cursor`)).cursor : 0"
+        - call: runAgentPrompt
+          args:
+            - ref: env
+            - sessionKey:
+                ref: sessionKey
+              message:
+                expr: config.prompt
+              timeoutMs:
+                expr: liveTurnTimeoutMs(env, 90000)
+        - call: waitForAgentHistoryReply
+          saveAs: outbound
+          args:
+            - ref: env
+            - ref: sessionKey
+            - lambda:
+                params: [text]
+                expr: "(() => { const lower = normalizeLowercaseStringOrEmpty(text); return lower.includes('delegated task') && lower.includes('result') && lower.includes('evidence') && !lower.includes('waiting'); })()"
+            - expr: liveTurnTimeoutMs(env, 45000)
+            - expr: "env.providerMode === 'mock-openai' ? 100 : 250"
         - assert:
             expr: "!['failed to delegate','could not delegate','subagent unavailable'].some((needle) => normalizeLowercaseStringOrEmpty(outbound.text).includes(needle))"
             message:
               expr: "`subagent handoff reported failure: ${outbound.text}`"
+        - set: subagentEvidenceRequest
+          value:
+            expr: "({ env, kind: 'handoff', requesterSessionKey: sessionKey, expectedChildLabel: config.expectedChildLabel, timeoutMs: liveTurnTimeoutMs(env, 60000) })"
         - try:
             actions:
               - call: waitForCondition
-                saveAs: completedSubagent
                 args:
                   - lambda:
                       async: true
-                      expr: >-
-                        (async () => {
-                          const sessionStore = await readRawQaSessionStore(env);
-                          const ownedChildren = Object.entries(sessionStore)
-                            .filter(([, entry]) => entry.spawnedBy === sessionKey && entry.label === config.expectedChildLabel);
-                          if (ownedChildren.length !== 1) return undefined;
-                          const childSessionKey = ownedChildren[0][0];
-                          const [childTranscript, parentTranscript, tasksPayload] = await Promise.all([
-                            readSessionTranscriptSummary(env, childSessionKey),
-                            readSessionTranscriptSummary(env, sessionKey),
-                            runQaCli(env, ['tasks', 'list', '--json', '--runtime', 'subagent'], {
-                              timeoutMs: liveTurnTimeoutMs(env, 60000),
-                              json: true,
-                            }),
-                          ]);
-                          return evaluateSubagentHandoffEvidence({
-                            requesterSessionKey: sessionKey,
-                            expectedChildLabel: config.expectedChildLabel,
-                            sessionStore,
-                            tasksPayload,
-                            childFinalText: childTranscript.finalText,
-                            parentFinalText: parentTranscript.finalText,
-                          });
-                        })().catch(() => undefined)
+                      expr: "(await collectSubagentScenarioEvidence(subagentEvidenceRequest)).evidence"
                   - expr: liveTurnTimeoutMs(env, 30000)
                   - expr: "env.providerMode === 'mock-openai' ? 100 : 250"
-            catchAs: handoffEvidenceError
             catch:
-              - set: handoffEvidenceSummary
+              - set: subagentEvidenceFailure
                 value:
-                  expr: >-
-                    (async () => {
-                      const sessionStore = await readRawQaSessionStore(env).catch(() => ({}));
-                      const ownedChildren = Object.entries(sessionStore)
-                        .filter(([, entry]) => entry.spawnedBy === sessionKey && entry.label === config.expectedChildLabel);
-                      const childSessionKey = ownedChildren.length === 1 ? ownedChildren[0][0] : '';
-                      const [childTranscript, parentTranscript, tasksPayload, mockRequests] = await Promise.all([
-                        childSessionKey
-                          ? readSessionTranscriptSummary(env, childSessionKey).catch(() => undefined)
-                          : Promise.resolve(undefined),
-                        readSessionTranscriptSummary(env, sessionKey).catch(() => undefined),
-                        runQaCli(env, ['tasks', 'list', '--json', '--runtime', 'subagent'], {
-                          timeoutMs: liveTurnTimeoutMs(env, 60000),
-                          json: true,
-                        }).catch(() => ({ tasks: [] })),
-                        env.mock
-                          ? fetchJson(`${env.mock.baseUrl}/debug/requests?after=${requestCursorBefore}`).catch(() => [])
-                          : Promise.resolve([]),
-                      ]);
-                      return summarizeSubagentHandoffFailure({
-                        requesterSessionKey: sessionKey,
-                        expectedChildLabel: config.expectedChildLabel,
-                        sessionStore,
-                        tasksPayload,
-                        childFinalText: childTranscript?.finalText,
-                        parentFinalText: parentTranscript?.finalText,
-                        mockRequests,
-                      });
-                    })()
+                  expr: "await collectSubagentScenarioEvidence(subagentEvidenceRequest)"
               - throw:
-                  expr: "`subagent handoff causal completion missing: ${formatErrorMessage(handoffEvidenceError)}; shape=${JSON.stringify(handoffEvidenceSummary)}`"
-        - assert:
-            expr: "completedSubagent.child.spawnedBy === sessionKey && completedSubagent.child.label === config.expectedChildLabel && completedSubagent.task.requesterSessionKey === sessionKey && completedSubagent.task.childSessionKey === completedSubagent.child.sessionKey && completedSubagent.task.status === 'succeeded' && completedSubagent.task.deliveryStatus === 'delivered'"
-            message:
-              expr: "`expected the current parent to own one successfully delivered ${config.expectedChildLabel} task and its attributed result`"
+                  expr: "`subagent handoff evidence failed: ${subagentEvidenceFailure.summary}`"
         # Parity gate criterion 2 (no fake progress / fake tool completion):
         # require an actual sessions_spawn tool call. Without this, a model
         # could produce the three labeled sections ("Delegated task", "Result",
@@ -180,4 +98,4 @@ flow:
             expr: "!env.mock || subagentDebugRequests.some((request) => !request.toolOutput && /delegate one bounded qa task/i.test(String(request.allInputText ?? '')) && request.plannedToolName === 'sessions_spawn' && request.plannedToolArgs?.label === config.expectedChildLabel)"
             message:
               expr: "`expected sessions_spawn tool call during subagent handoff scenario, saw plannedToolNames=${JSON.stringify(subagentDebugRequests.map((request) => request.plannedToolName ?? null))}`"
-      detailsExpr: completedSubagent.parentFinalText
+      detailsExpr: outbound.text

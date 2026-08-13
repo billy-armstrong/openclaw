@@ -173,12 +173,6 @@ export type MockOpenAiRequestSnapshot = {
   plannedToolArgs?: Record<string, unknown>;
   toolOutputCallId?: string;
   toolOutputStructuredError?: true;
-  hasReadableCompletedHandoffResult?: boolean;
-  emittedAssistantHasDelegatedSection?: boolean;
-  emittedAssistantHasResultSection?: boolean;
-  emittedAssistantHasEvidenceSection?: boolean;
-  emittedAssistantContainsParsedChild?: boolean;
-  emittedAssistantIsFunctionCall?: boolean;
 };
 
 export type MockOpenAiRequestSnapshotInput = Omit<MockOpenAiRequestSnapshot, "cursor">;

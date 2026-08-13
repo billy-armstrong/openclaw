@@ -76,12 +76,13 @@ export function readCompletedSubagentHandoffResult(allInputText: string): string
     return undefined;
   }
   const completionEvent = allInputText.slice(eventStart);
-  const resultHeader = completionEvent.search(/^Child result(?:\s*\([^\r\n]*\))?\s*:\s*$/imu);
-  if (resultHeader < 0) {
-    return undefined;
-  }
-  const metadata = completionEvent.slice(0, resultHeader);
+  const resultMatch =
+    /^Child result(?:\s*\([^\r\n]*\))?\s*:\s*\r?\n<prompt-data>\s*([\s\S]*?)\s*<\/prompt-data>/imu.exec(
+      completionEvent,
+    );
+  const metadata = resultMatch ? completionEvent.slice(0, resultMatch.index) : "";
   if (
+    !resultMatch ||
     !/^source:\s*subagent\s*$/imu.test(metadata) ||
     !/^task:\s*qa-sidecar\s*$/imu.test(metadata) ||
     !/^status:\s*(?:completed successfully|completed;\s*ready for parent review)\s*$/imu.test(
@@ -90,26 +91,17 @@ export function readCompletedSubagentHandoffResult(allInputText: string): string
   ) {
     return undefined;
   }
-  const childResult = /<prompt-data>\s*([\s\S]*?)\s*<\/prompt-data>/iu
-    .exec(completionEvent.slice(resultHeader))?.[1]
-    ?.trim();
+  const childResult = resultMatch[1]?.trim();
   if (!childResult || childResult === "(no output)") {
     return undefined;
   }
-  if (childResult.startsWith("{")) {
-    try {
-      const payload: unknown = JSON.parse(childResult);
-      if (
-        payload &&
-        typeof payload === "object" &&
-        "status" in payload &&
-        payload.status === "accepted"
-      ) {
-        return undefined;
-      }
-    } catch {
-      // Protected child output is ordinary user-facing text, not required JSON.
+  try {
+    const payload = JSON.parse(childResult) as { status?: unknown };
+    if (payload?.status === "accepted") {
+      return undefined;
     }
+  } catch {
+    // Protected child output is ordinary user-facing text, not required JSON.
   }
   return childResult.replace(/\s+/gu, " ");
 }

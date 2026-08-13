@@ -58,73 +58,24 @@ flow:
             expr: "env.mock || String(outbound.text ?? '').includes(config.contextNeedle)"
             message:
               expr: "`expected live final answer to include fork-only context code ${config.contextNeedle}, got: ${outbound.text}`"
+        - set: subagentEvidenceRequest
+          value:
+            expr: "({ env, kind: 'fork', requesterSessionKey: sessionKey, expectedChildLabel: config.expectedChildLabel, contextNeedle: config.contextNeedle, timeoutMs: liveTurnTimeoutMs(env, 60000) })"
         - try:
             actions:
               - call: waitForCondition
-                saveAs: forkedChildEvidence
                 args:
                   - lambda:
                       async: true
-                      expr: >-
-                        (async () => {
-                          const sessionStore = await readRawQaSessionStore(env);
-                          const [childTranscripts, tasksPayload] = await Promise.all([
-                            Promise.all(Object.entries(sessionStore)
-                              .filter(([, entry]) => entry.spawnedBy === sessionKey && entry.label === config.expectedChildLabel)
-                              .map(async ([childSessionKey]) => ({
-                                sessionKey: childSessionKey,
-                                finalText: String((await readSessionTranscriptSummary(env, childSessionKey)).finalText ?? ''),
-                              }))),
-                            runQaCli(env, ['tasks', 'list', '--json', '--runtime', 'subagent'], {
-                              timeoutMs: liveTurnTimeoutMs(env, 60000),
-                              json: true,
-                            }),
-                          ]);
-                          return evaluateForkedSubagentEvidence({
-                            requesterSessionKey: sessionKey,
-                            expectedChildLabel: config.expectedChildLabel,
-                            contextNeedle: config.contextNeedle,
-                            sessionStore,
-                            tasksPayload,
-                            childTranscripts,
-                          });
-                        })().catch(() => undefined)
+                      expr: "(await collectSubagentScenarioEvidence(subagentEvidenceRequest)).evidence"
                   - expr: liveTurnTimeoutMs(env, 30000)
                   - expr: "env.providerMode === 'mock-openai' ? 100 : 250"
-            catchAs: forkedEvidenceError
             catch:
-              - set: forkedEvidenceSummary
+              - set: subagentEvidenceFailure
                 value:
-                  expr: >-
-                    (async () => {
-                      const sessionStore = await readRawQaSessionStore(env).catch(() => ({}));
-                      const [childTranscripts, tasksPayload] = await Promise.all([
-                        Promise.all(Object.entries(sessionStore)
-                          .filter(([, entry]) => entry.spawnedBy === sessionKey && entry.label === config.expectedChildLabel)
-                          .map(async ([childSessionKey]) => ({
-                            sessionKey: childSessionKey,
-                            finalText: String((await readSessionTranscriptSummary(env, childSessionKey).catch(() => ({}))).finalText ?? ''),
-                          }))),
-                        runQaCli(env, ['tasks', 'list', '--json', '--runtime', 'subagent'], {
-                          timeoutMs: liveTurnTimeoutMs(env, 60000),
-                          json: true,
-                        }).catch(() => ({ tasks: [] })),
-                      ]);
-                      return summarizeForkedSubagentFailure({
-                        requesterSessionKey: sessionKey,
-                        expectedChildLabel: config.expectedChildLabel,
-                        contextNeedle: config.contextNeedle,
-                        sessionStore,
-                        tasksPayload,
-                        childTranscripts,
-                      });
-                    })()
+                  expr: "await collectSubagentScenarioEvidence(subagentEvidenceRequest)"
               - throw:
-                  expr: "`forked subagent causal completion missing: ${formatErrorMessage(forkedEvidenceError)}; shape=${JSON.stringify(forkedEvidenceSummary)}`"
-        - assert:
-            expr: "forkedChildEvidence.child.spawnedBy === sessionKey && forkedChildEvidence.child.label === config.expectedChildLabel && forkedChildEvidence.task.requesterSessionKey === sessionKey && forkedChildEvidence.task.childSessionKey === forkedChildEvidence.child.sessionKey && forkedChildEvidence.task.status === 'succeeded' && forkedChildEvidence.task.deliveryStatus === 'delivered'"
-            message:
-              expr: "`expected one ${config.expectedChildLabel} child owned by the current forked-context parent with transcript evidence`"
+                  expr: "`forked subagent evidence failed: ${subagentEvidenceFailure.summary}`"
         - set: forkDebugRequests
           value:
             expr: "env.mock ? [...(await fetchJson(`${env.mock.baseUrl}/debug/requests?after=${requestCursorBefore}`))] : []"
