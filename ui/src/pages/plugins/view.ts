@@ -23,11 +23,13 @@ import { EXTERNAL_LINK_TARGET, buildExternalLinkRel } from "../../lib/external-l
 import "../../styles/plugins.css";
 import {
   CLAWHUB_BROWSE_URL,
+  resolvePluginInstallIdentity,
   type PluginCatalogItem,
   type PluginInstallRequest,
   type PluginListResult,
   type PluginSearchResult,
 } from "../../lib/plugins/index.ts";
+import type { PluginInstallPolicyWarningDetails } from "./install-policy-warning.ts";
 import {
   CONNECTOR_GROUP_ORDER,
   CONNECTOR_SUGGESTIONS,
@@ -45,10 +47,33 @@ export type PluginsTab = "installed" | "discover";
 export type InstalledFilter = "all" | "enabled" | "disabled" | "issues";
 
 export type PluginRowMessage = {
-  kind: "success" | "error";
+  kind: "success" | "error" | "warning";
   text: string;
   acknowledge?: { packageName: string; version?: string };
+  installPolicyWarning?: {
+    details: PluginInstallPolicyWarningDetails;
+    request: PluginInstallRequest;
+  };
 };
+
+export type InstallOutcomeReconciliation = "checking" | "failed";
+
+type PluginInstallPolicyFinding = NonNullable<
+  PluginInstallPolicyWarningDetails["findings"]
+>[number];
+
+function policyFindingSeverityLabel(severity: PluginInstallPolicyFinding["severity"]): string {
+  switch (severity) {
+    case "info":
+      return t("pluginsPage.policyReviewSeverityInfo");
+    case "warn":
+      return t("pluginsPage.policyReviewSeverityWarn");
+    case "critical":
+      return t("pluginsPage.policyReviewSeverityCritical");
+  }
+  const unreachableSeverity: never = severity;
+  return unreachableSeverity;
+}
 
 type PluginsViewProps = {
   connected: boolean;
@@ -62,6 +87,7 @@ type PluginsViewProps = {
   searchLoading: boolean;
   searchError: string | null;
   busy: Readonly<Record<string, boolean>>;
+  installOutcomeReconciliations: Readonly<Record<string, InstallOutcomeReconciliation>>;
   messages: Readonly<Record<string, PluginRowMessage>>;
   pendingRemoval: Readonly<Record<string, boolean>>;
   detailPluginId: string | null;
@@ -80,7 +106,9 @@ type PluginsViewProps = {
   onIconError: (pluginId: string) => void;
   onShowDetails: (pluginId: string | null) => void;
   onSetEnabled: (pluginId: string, enabled: boolean, rowKey: string) => void;
-  onInstall: (rowKey: string, request: PluginInstallRequest) => void;
+  onInstall: (request: PluginInstallRequest, installIdentity: string) => void;
+  onDismissMessage: (rowKey: string) => void;
+  onRetryInstallOutcome: () => void;
   onRequestUninstall: (rowKey: string) => void;
   onCancelUninstall: (rowKey: string) => void;
   onUninstall: (pluginId: string, rowKey: string) => void;
@@ -130,6 +158,28 @@ export function pluginRowKey(pluginId: string): string {
 
 function clawHubRowKey(packageName: string): string {
   return `clawhub:${packageName}`;
+}
+
+function resolveInstallIdentity(
+  props: PluginsViewProps,
+  request: PluginInstallRequest,
+  runtimeId?: string,
+): string {
+  return resolvePluginInstallIdentity(request, props.result?.plugins ?? [], runtimeId);
+}
+
+function installOperationState(
+  props: PluginsViewProps,
+  identity: string | undefined,
+): { busy: boolean; outcome?: InstallOutcomeReconciliation } {
+  if (!identity) {
+    return { busy: false };
+  }
+  const outcome = props.installOutcomeReconciliations[identity];
+  return {
+    busy: Boolean(props.busy[identity] || outcome),
+    ...(outcome ? { outcome } : {}),
+  };
 }
 
 export function connectorRowKey(connectorId: string): string {
@@ -355,6 +405,16 @@ function originLabel(origin: string): string {
   }
 }
 
+function requestInstall(
+  props: PluginsViewProps,
+  request: PluginInstallRequest,
+  installIdentity?: string,
+) {
+  if (installIdentity) {
+    props.onInstall(request, installIdentity);
+  }
+}
+
 /** Dot-separated plain-text meta line under a row description. */
 function renderMetaLine(parts: ReadonlyArray<TemplateResult | string | typeof nothing>) {
   const visible = parts.filter((part) => part !== nothing && part !== "");
@@ -374,9 +434,141 @@ function renderRowMessage(
   message: PluginRowMessage | undefined,
   busy: boolean,
   props: PluginsViewProps,
+  installOutcome?: InstallOutcomeReconciliation,
+  installIdentity?: string,
 ) {
+  const messageKey = message ? key : (installIdentity ?? key);
+  message ??= installIdentity ? props.messages[installIdentity] : undefined;
+  if (installOutcome) {
+    return html`
+      <div
+        class="plugins-row-message plugins-row-message--warning"
+        role=${installOutcome === "failed" ? "alert" : "status"}
+      >
+        <span>
+          ${t(
+            installOutcome === "failed"
+              ? "pluginsPage.installOutcomeFailed"
+              : "pluginsPage.installOutcomeChecking",
+          )}
+        </span>
+        ${installOutcome === "failed"
+          ? html`<button type="button" class="btn btn--sm" @click=${props.onRetryInstallOutcome}>
+              ${t("common.retry")}
+            </button>`
+          : nothing}
+      </div>
+    `;
+  }
   if (!message) {
     return nothing;
+  }
+  if (message.installPolicyWarning) {
+    const { details, request } = message.installPolicyWarning;
+    const findings = details.findings ?? [];
+    const reviewBody =
+      findings.length === 0
+        ? t("pluginsPage.policyReviewBodyReason", { reason: details.reason })
+        : t("pluginsPage.policyReviewBodyKnown", { count: String(findings.length) });
+    return html`
+      <div
+        class="plugins-row-message plugins-row-message--warning plugins-policy-review"
+        role="alert"
+      >
+        <div class="plugins-policy-review__header">
+          <span class="plugins-policy-review__icon" aria-hidden="true">
+            ${icons.alertTriangle}
+          </span>
+          <div>
+            <strong>${t("pluginsPage.policyReviewTitle")}</strong>
+            ${findings.length > 0
+              ? html`<span class="plugins-policy-review__reason">${details.reason}</span>`
+              : nothing}
+            <span>${reviewBody}</span>
+          </div>
+        </div>
+        ${findings.length > 0
+          ? html`
+              <section class="plugins-policy-review__findings-panel">
+                <strong class="plugins-policy-review__findings-heading"
+                  >${t("pluginsPage.policyReviewFindings")}</strong
+                >
+                <ul class="plugins-policy-review__findings">
+                  ${findings.map(
+                    (finding) => html`
+                      <li>
+                        <span class="plugins-policy-review__finding-content">
+                          <span
+                            class="plugins-policy-review__severity plugins-policy-review__severity--${finding.severity}"
+                            >${policyFindingSeverityLabel(finding.severity)}</span
+                          >
+                          <span>${finding.message}</span>
+                        </span>
+                      </li>
+                    `,
+                  )}
+                </ul>
+              </section>
+            `
+          : nothing}
+        ${findings.length > 0
+          ? html`
+              <details class="plugins-policy-review__details">
+                <summary>
+                  <span class="plugins-policy-review__details-chevron" aria-hidden="true"
+                    >${icons.chevronRight}</span
+                  >
+                  <span>${t("pluginsPage.policyReviewTechnicalDetails")}</span>
+                </summary>
+                <div class="plugins-policy-review__details-body">
+                  <ul>
+                    ${findings.map(
+                      (finding) => html`
+                        <li>
+                          <code>${finding.ruleId}</code>
+                          ${finding.file
+                            ? html`<code
+                                >${finding.file}${finding.line ? `:${finding.line}` : ""}</code
+                              >`
+                            : nothing}
+                          ${finding.evidence ? html`<span>${finding.evidence}</span>` : nothing}
+                        </li>
+                      `,
+                    )}
+                  </ul>
+                </div>
+              </details>
+            `
+          : nothing}
+        <div class="plugins-policy-review__actions">
+          <button
+            type="button"
+            class="btn btn--sm"
+            ?disabled=${busy}
+            @click=${() => props.onDismissMessage(messageKey)}
+          >
+            ${t("pluginsPage.cancel")}
+          </button>
+          <button
+            type="button"
+            class="btn btn--sm danger"
+            title=${props.mutationBlockedReason ?? ""}
+            ?disabled=${busy || !props.canMutate}
+            @click=${() =>
+              requestInstall(
+                props,
+                {
+                  ...request,
+                  installPolicyWarningAcknowledgement: details.acknowledgementToken,
+                },
+                installIdentity,
+              )}
+          >
+            ${busy ? t("pluginsPage.installing") : t("pluginsPage.installAnyway")}
+          </button>
+        </div>
+      </div>
+    `;
   }
   const role = message.kind === "error" ? "alert" : "status";
   return html`
@@ -390,12 +582,18 @@ function renderRowMessage(
               title=${props.mutationBlockedReason ?? ""}
               ?disabled=${busy || !props.canMutate}
               @click=${() =>
-                props.onInstall(key, {
-                  source: "clawhub",
-                  packageName: message.acknowledge?.packageName ?? "",
-                  ...(message.acknowledge?.version ? { version: message.acknowledge.version } : {}),
-                  acknowledgeClawHubRisk: true,
-                })}
+                requestInstall(
+                  props,
+                  {
+                    source: "clawhub",
+                    packageName: message.acknowledge?.packageName ?? "",
+                    ...(message.acknowledge?.version
+                      ? { version: message.acknowledge.version }
+                      : {}),
+                    acknowledgeClawHubRisk: true,
+                  },
+                  installIdentity,
+                )}
             >
               ${busy ? t("pluginsPage.installing") : t("pluginsPage.acknowledgeRisk")}
             </button>
@@ -408,7 +606,9 @@ function renderRowMessage(
 /** Ignore activations bubbling from interactive children so rows stay clickable. */
 function fromInteractiveChild(event: Event): boolean {
   return Boolean(
-    (event.target as HTMLElement | null)?.closest("button, a, input, label, form, [role='menu']"),
+    (event.target as HTMLElement | null)?.closest(
+      "button, a, input, label, form, summary, .plugins-policy-review, [role='menu']",
+    ),
   );
 }
 
@@ -464,10 +664,15 @@ function renderRemoveButton(
 function renderInstallButton(
   props: PluginsViewProps,
   busy: boolean,
-  key: string,
   name: string,
   request: PluginInstallRequest,
+  installIdentity: string,
 ) {
+  const installMessage = props.messages[installIdentity];
+  if (installMessage?.installPolicyWarning || installMessage?.acknowledge) {
+    return nothing;
+  }
+  const installOutcome = props.installOutcomeReconciliations[installIdentity];
   return html`
     <button
       type="button"
@@ -477,10 +682,14 @@ function renderInstallButton(
       ?disabled=${!props.canMutate || busy}
       @click=${(event: Event) => {
         event.stopPropagation();
-        props.onInstall(key, request);
+        props.onInstall(request, installIdentity);
       }}
     >
-      ${busy ? t("pluginsPage.installing") : t("pluginsPage.install")}
+      ${busy
+        ? installOutcome
+          ? t("pluginsPage.checkingInstallOutcome")
+          : t("pluginsPage.installing")
+        : t("pluginsPage.install")}
     </button>
   `;
 }
@@ -536,7 +745,13 @@ function renderCatalogActions(
   if (!plugin.installed) {
     const install = plugin.install;
     return install
-      ? renderInstallButton(props, busy, rowKey, plugin.name, install)
+      ? renderInstallButton(
+          props,
+          busy,
+          plugin.name,
+          install,
+          resolveInstallIdentity(props, install),
+        )
       : html`<span class="plugins-action-note">${t("pluginsPage.unavailable")}</span>`;
   }
   return html`
@@ -606,7 +821,11 @@ function renderPluginRow(
   includePackageName = false,
 ): TemplateResult {
   const key = pluginRowKey(plugin.id);
-  const busy = props.busy[key] ?? false;
+  const installIdentity = plugin.install
+    ? resolveInstallIdentity(props, plugin.install)
+    : undefined;
+  const installOperation = installOperationState(props, installIdentity);
+  const busy = props.busy[key] || installOperation.busy;
   return html`
     <article
       class="settings-row plugins-item plugins-item--clickable"
@@ -655,7 +874,14 @@ function renderPluginRow(
             ${plugin.error}
           </div>`
         : nothing}
-      ${renderRowMessage(key, props.messages[key], busy, props)}
+      ${renderRowMessage(
+        key,
+        props.messages[key],
+        busy,
+        props,
+        installOperation.outcome,
+        installIdentity,
+      )}
     </article>
   `;
 }
@@ -785,7 +1011,7 @@ function renderConnectorRow(
   props: PluginsViewProps,
 ): TemplateResult {
   const key = connectorRowKey(connector.id);
-  const busy = props.busy[key] ?? false;
+  const busy = Boolean(props.busy[key]);
   const isMcp = connector.action.kind === "mcp";
   const installed =
     isMcp &&
@@ -872,7 +1098,10 @@ function renderClawHubResult(item: PluginSearchResult, props: PluginsViewProps):
   const pkg = item.package;
   const installed = findInstalledSearchPlugin(item, props.result?.plugins ?? []);
   const key = clawHubRowKey(pkg.name);
-  const busy = props.busy[key] ?? false;
+  const installRequest = { source: "clawhub", packageName: pkg.name } as const;
+  const installIdentity = resolveInstallIdentity(props, installRequest, pkg.runtimeId);
+  const installOperation = installOperationState(props, installIdentity);
+  const busy = props.busy[key] || installOperation.busy;
   const artSlug = pkg.runtimeId ?? pkg.name;
   return html`
     <article
@@ -917,12 +1146,16 @@ function renderClawHubResult(item: PluginSearchResult, props: PluginsViewProps):
       <div class="settings-row__control">
         ${installed
           ? html`${rowStateStatus(installed)}${renderCatalogActions(installed, props, busy, key)}`
-          : renderInstallButton(props, busy, key, pkg.displayName, {
-              source: "clawhub",
-              packageName: pkg.name,
-            })}
+          : renderInstallButton(props, busy, pkg.displayName, installRequest, installIdentity)}
       </div>
-      ${renderRowMessage(key, props.messages[key], busy, props)}
+      ${renderRowMessage(
+        key,
+        props.messages[key],
+        busy,
+        props,
+        installOperation.outcome,
+        installIdentity,
+      )}
     </article>
   `;
 }
@@ -1045,7 +1278,11 @@ function renderDetailOverlay(props: PluginsViewProps) {
     return nothing;
   }
   const key = pluginRowKey(plugin.id);
-  const busy = props.busy[key] ?? false;
+  const installIdentity = plugin.install
+    ? resolveInstallIdentity(props, plugin.install)
+    : undefined;
+  const installOperation = installOperationState(props, installIdentity);
+  const busy = props.busy[key] || installOperation.busy;
   return html`
     <openclaw-modal-dialog
       label=${plugin.name}
@@ -1100,7 +1337,13 @@ function renderDetailOverlay(props: PluginsViewProps) {
                         </button>
                       `
                     : plugin.install
-                      ? renderInstallButton(props, busy, key, plugin.name, plugin.install)
+                      ? renderInstallButton(
+                          props,
+                          busy,
+                          plugin.name,
+                          plugin.install,
+                          resolveInstallIdentity(props, plugin.install),
+                        )
                       : nothing}
                   ${plugin.removable
                     ? html`
@@ -1123,7 +1366,14 @@ function renderDetailOverlay(props: PluginsViewProps) {
                 ${plugin.error}
               </div>`
             : nothing}
-          ${renderRowMessage(key, props.messages[key], busy, props)}
+          ${renderRowMessage(
+            key,
+            props.messages[key],
+            busy,
+            props,
+            installOperation.outcome,
+            installIdentity,
+          )}
           <div class="plugins-detail__meta">
             ${plugin.origin
               ? detailMetaRow(t("pluginsPage.detailOrigin"), originLabel(plugin.origin))
