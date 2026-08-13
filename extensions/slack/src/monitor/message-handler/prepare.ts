@@ -1646,7 +1646,7 @@ export async function prepareSlackMessage(params: {
     ? normalizeSlackAppContextEntities(message.app_context)
     : [];
 
-  const ctxPayload = buildChannelInboundEventContext({
+  const ctxPayload = (ctx.buildContext ?? buildChannelInboundEventContext)({
     channelIngress: messageIngress,
     channel: "slack",
     accountId: route.accountId,
