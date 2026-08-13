@@ -126,7 +126,10 @@ function persistEngineHistory(
   startIndex: number,
 ): SystemAgentChatHistoryTurn[] {
   const at = Date.now();
-  const turns = engine.historySince(startIndex).map((turn) => ({ ...turn, at }));
+  const turns: SystemAgentChatHistoryTurn[] = [];
+  for (const turn of engine.historySince(startIndex)) {
+    turns.push({ ...turn, at });
+  }
   for (const turn of turns) {
     // Engine history is authoritative here: sensitive user text has already
     // been replaced by the mask marker before it crosses this boundary.
