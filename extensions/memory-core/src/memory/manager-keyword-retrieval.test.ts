@@ -339,7 +339,7 @@ describe("memory index", () => {
       throw new Error("Expected a test embedding provider");
     }
     provider.embedQuery = async () => {
-      throw providerFixture.createLocalWorkerExitError();
+      throw providerFixture.createLocalServerFailure();
     };
     degraded.markLocalEmbeddingProviderDegraded = () => {
       degraded.provider = null;

@@ -35,7 +35,7 @@ describe("memory index", () => {
       id: "local",
       model: "mock-embed",
       embedQuery: async () => {
-        throw providerFixture.createLocalWorkerExitError();
+        throw providerFixture.createLocalServerFailure();
       },
       embedBatch: async (texts: string[]) => texts.map(() => [1, 0, 0, 0]),
       close: async () => {},
@@ -84,10 +84,10 @@ describe("memory index", () => {
         id: "mock",
         model: "new-embed",
         embedQuery: async () => {
-          throw providerFixture.createLocalWorkerExitError();
+          throw providerFixture.createLocalServerFailure();
         },
         embedBatch: async () => {
-          throw providerFixture.createLocalWorkerExitError();
+          throw providerFixture.createLocalServerFailure();
         },
         close: async () => {},
       };
@@ -126,10 +126,10 @@ describe("memory index", () => {
       id: "local",
       model: "mock-embed",
       embedQuery: async () => {
-        throw providerFixture.createLocalWorkerExitError();
+        throw providerFixture.createLocalServerFailure();
       },
       embedBatch: async () => {
-        throw providerFixture.createLocalWorkerExitError();
+        throw providerFixture.createLocalServerFailure();
       },
       close: async () => {},
     };
@@ -137,7 +137,7 @@ describe("memory index", () => {
 
     await expect(manager.probeEmbeddingAvailability()).resolves.toMatchObject({
       ok: false,
-      error: expect.stringContaining("Local embedding worker exited"),
+      error: expect.stringContaining("Managed llama-server exited"),
     });
 
     const results = await manager.search("alpha");
@@ -221,16 +221,15 @@ describe("memory index", () => {
       const getRuntimeFacts = vi.fn(() => ({
         engine: "llama.cpp" as const,
         state: "ready" as const,
-        backend: "cuda" as const,
-        buildType: "prebuilt" as const,
-        deviceNames: ["NVIDIA Test GPU"],
-        offload: {
-          supported: true,
-          offloadedLayers: 24,
-          totalLayers: 24,
-        },
-        context: {
-          requestedSize: 4096,
+        backend: "cpu" as const,
+        buildInfo: "b10357 (689e227db)",
+        model: { id: "embedding-model", path: "/models/embedding.gguf" },
+        capabilities: { vision: false, draft: false },
+        endpoints: {
+          health: "ready",
+          models: "ready",
+          props: "ready",
+          metrics: "ready",
         },
       }));
       const provider = {
@@ -249,15 +248,10 @@ describe("memory index", () => {
 
       expect(manager.status().custom?.llamaCppRuntime).toMatchObject({
         state: "ready",
-        backend: "cuda",
-        deviceNames: ["NVIDIA Test GPU"],
-        offload: {
-          offloadedLayers: 24,
-          totalLayers: 24,
-        },
-        context: {
-          requestedSize: 4096,
-        },
+        backend: "cpu",
+        buildInfo: "b10357 (689e227db)",
+        model: { id: "embedding-model", path: "/models/embedding.gguf" },
+        endpoints: { health: "ready", metrics: "ready" },
       });
       expect(getRuntimeFacts).toHaveBeenCalledTimes(1);
     } finally {

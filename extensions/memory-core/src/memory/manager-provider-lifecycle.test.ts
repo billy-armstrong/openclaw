@@ -89,7 +89,7 @@ describe("memory index", () => {
       manager as unknown as {
         markLocalEmbeddingProviderDegraded: (err: unknown) => void;
       }
-    ).markLocalEmbeddingProviderDegraded(providerFixture.createLocalWorkerExitError());
+    ).markLocalEmbeddingProviderDegraded(providerFixture.createLocalServerFailure());
 
     expect(manager.getCachedEmbeddingAvailability()).toBeNull();
     await expect(manager.probeEmbeddingAvailability()).resolves.toMatchObject({
@@ -123,11 +123,11 @@ describe("memory index", () => {
       throw new Error("Expected a test embedding provider");
     }
     fields.provider.id = "local";
-    fields.markLocalEmbeddingProviderDegraded(providerFixture.createLocalWorkerExitError());
+    fields.markLocalEmbeddingProviderDegraded(providerFixture.createLocalServerFailure());
     await vi.waitFor(() => expect(providerFixture.providerCloseCalls).toBe(1));
 
     const callsBeforeFallback = providerFixture.providerCalls.length;
-    const fallbackPromise = fields.activateFallbackProvider("local worker exited");
+    const fallbackPromise = fields.activateFallbackProvider("managed llama-server exited");
     try {
       await Promise.resolve();
       expect(providerFixture.providerCalls).toHaveLength(callsBeforeFallback);
@@ -378,9 +378,9 @@ describe("memory index", () => {
         5_000,
         "concurrent embeddings did not start",
       );
-      fields.markLocalEmbeddingProviderDegraded(providerFixture.createLocalWorkerExitError());
+      fields.markLocalEmbeddingProviderDegraded(providerFixture.createLocalServerFailure());
       await vi.waitFor(() => expect(fields.provider).toBeNull());
-      fallbackPromise = fields.activateFallbackProvider("local worker exited");
+      fallbackPromise = fields.activateFallbackProvider("managed llama-server exited");
       releaseFirstEmbedding();
       await firstIndexPromise;
       expect(providerFixture.providerCloseCalls).toBe(0);

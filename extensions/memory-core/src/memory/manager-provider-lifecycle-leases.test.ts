@@ -53,7 +53,7 @@ describe("memory index", () => {
     }
     fields.provider.id = "local";
     fields.providerKey = fields.computeProviderKey();
-    fields.markLocalEmbeddingProviderDegraded(providerFixture.createLocalWorkerExitError());
+    fields.markLocalEmbeddingProviderDegraded(providerFixture.createLocalServerFailure());
     await vi.waitFor(() => {
       expect(fields.provider).toBeNull();
       expect(providerFixture.providerCloseCalls).toBe(1);
@@ -76,7 +76,9 @@ describe("memory index", () => {
     fields.beginSyncProviderGeneration();
     try {
       await fields.indexFile(first, { source: "memory", content: first.content });
-      await expect(fields.activateFallbackProvider("local worker exited")).resolves.toBe(true);
+      await expect(fields.activateFallbackProvider("managed llama-server exited")).resolves.toBe(
+        true,
+      );
       await fields.indexFile(second, { source: "memory", content: second.content });
     } finally {
       fields.endSyncProviderGeneration();

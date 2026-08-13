@@ -82,7 +82,7 @@ type ProviderControls = {
     canonicalModel: string;
     cacheModel: string;
   };
-  createLocalWorkerExitError: () => Error;
+  createLocalServerFailure: () => Error;
 };
 
 export type ManagerIndexFixture = {
@@ -148,12 +148,8 @@ afterAll(() => {
   vi.resetConfig();
 });
 
-function createLocalWorkerExitError(): Error {
-  return Object.assign(new Error("Local embedding worker exited unexpectedly (exit code 134)"), {
-    code: "LOCAL_EMBEDDING_WORKER_EXITED",
-    reason: "exit",
-    exitCode: 134,
-  });
+function createLocalServerFailure(): Error {
+  return new Error("Managed llama-server exited before readiness");
 }
 
 vi.mock("./embeddings.js", async (importOriginal) => {
@@ -366,7 +362,7 @@ export function createManagerIndexFixture(deps: {
   getMemorySearchManager: GetMemorySearchManager;
   closeAllMemorySearchManagers: typeof import("./index.js").closeAllMemorySearchManagers;
 }): ManagerIndexFixture {
-  const provider = Object.assign(providerState, { createLocalWorkerExitError });
+  const provider = Object.assign(providerState, { createLocalServerFailure });
   let root = "";
   let workspace = "";
   let memory = "";
