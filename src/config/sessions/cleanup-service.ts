@@ -3,7 +3,6 @@
 
 import fs from "node:fs";
 import path from "node:path";
-import { resolveDefaultAgentId } from "../../agents/agent-scope.js";
 import { getLogger } from "../../logging/logger.js";
 import { normalizeAgentId, parseAgentSessionKey } from "../../routing/session-key.js";
 import { resolveOpenClawAgentSqlitePath } from "../../state/openclaw-agent-db.js";
@@ -14,7 +13,7 @@ import {
   type SessionDiskBudgetSweepResult,
   type SessionUnreferencedArtifactSweepResult,
 } from "./disk-budget.js";
-import { resolveStorePath } from "./paths.js";
+import { resolveSessionStorePathCore } from "./paths.js";
 import {
   applySessionEntryLifecycleMutation,
   listSessionEntriesCore,
@@ -38,6 +37,7 @@ import {
   type ResolvedSessionMaintenanceConfig,
 } from "./store-maintenance.js";
 import {
+  resolveSessionStoreCompatibilityAgentId,
   resolveSessionStoreTargets,
   type SessionStoreTarget,
   type SessionStoreSelectionOptions,
@@ -708,9 +708,11 @@ export async function purgeAgentSessionStoreEntries(
     const storeConfig = cfg.session?.store;
     const storeAgentId =
       typeof storeConfig === "string" && !storeConfig.includes("{agentId}")
-        ? normalizeAgentId(resolveDefaultAgentId(cfg))
+        ? resolveSessionStoreCompatibilityAgentId(cfg)
         : normalizedAgentId;
-    const storePath = resolveStorePath(cfg.session?.store, { agentId: normalizedAgentId });
+    const storePath = resolveSessionStorePathCore(cfg.session?.store, {
+      agentId: normalizedAgentId,
+    });
     await purgeDeletedAgentSessionEntries({
       cfg,
       agentId: normalizedAgentId,

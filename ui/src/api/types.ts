@@ -520,6 +520,7 @@ export type SessionsBranchesSwitchResult =
 export type SessionsPatchResult = SessionsPatchResultBase<{
   sessionId: string;
   updatedAt?: number;
+  archivedAt?: number;
   thinkingLevel?: string;
   fastMode?: FastMode;
   verboseLevel?: string;
@@ -815,6 +816,8 @@ export type ModelCatalogEntry = {
   available?: boolean;
   contextWindow?: number;
   reasoning?: boolean;
+  thinkingLevels?: GatewayThinkingLevelOption[];
+  thinkingDefault?: string;
   supportsTools?: boolean;
   agentRuntime?: import("../../../packages/gateway-protocol/src/schema.js").GatewayAgentRuntime;
   input?: Array<"text" | "image" | "document">;

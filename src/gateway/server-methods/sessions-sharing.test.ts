@@ -4,7 +4,7 @@ import {
   loadSessionEntry,
   loadTranscriptEvents,
   patchSessionEntryCore,
-  upsertSessionEntry,
+  upsertSessionEntryCore,
 } from "../../config/sessions/session-accessor.js";
 import {
   addSessionMember,
@@ -121,10 +121,46 @@ async function call(
 }
 
 describe("session sharing handlers", () => {
+  it("admits bare fixed-store keys only through their persisted owner", async () => {
+    await withOpenClawTestState({ scenario: "minimal" }, async (state) => {
+      const storePath = state.path("shared-sessions.sqlite");
+      await upsertSessionEntryCore(
+        { agentId: "ops", sessionKey: "global", storePath },
+        { sessionId: "session-ops-global", updatedAt: 1, visibility: "shared" },
+      );
+      const ownedConfig = {
+        session: { scope: "global", store: storePath },
+        agents: {
+          ownership: "explicit",
+          defaults: { sessionStore: { agentId: "ops" } },
+          entries: { ops: {}, research: {} },
+        },
+      } as ReturnType<GatewayRequestContext["getRuntimeConfig"]>;
+
+      expect(
+        await call("session.members.list", { sessionKey: "global" }, context(vi.fn(), ownedConfig)),
+      ).toMatchObject([[true, { sessionKey: "global", role: "owner" }, undefined]]);
+
+      const ownerlessConfig = {
+        ...ownedConfig,
+        agents: { ownership: "explicit", entries: { ops: {}, research: {} } },
+      } as ReturnType<GatewayRequestContext["getRuntimeConfig"]>;
+      const rejected = await call(
+        "session.members.list",
+        { sessionKey: "global" },
+        context(vi.fn(), ownerlessConfig),
+      );
+      expect(rejected[0]?.[2]).toMatchObject({
+        code: "INVALID_REQUEST",
+        message: expect.stringContaining("has no explicit owner"),
+      });
+    });
+  });
+
   it("keeps hidden incognito rows from changing non-owner list path metadata", async () => {
     await withOpenClawTestState({ scenario: "minimal" }, async (state) => {
       const incognitoKey = "agent:main:dashboard:incognito-private";
-      await upsertSessionEntry(
+      await upsertSessionEntryCore(
         { agentId: "main", sessionKey: "agent:main:main" },
         { sessionId: "session-main", updatedAt: 1 },
       );
@@ -148,7 +184,7 @@ describe("session sharing handlers", () => {
       };
 
       const before = await listFor(viewer);
-      await upsertSessionEntry(
+      await upsertSessionEntryCore(
         {
           agentId: "main",
           sessionKey: incognitoKey,
@@ -178,7 +214,7 @@ describe("session sharing handlers", () => {
   it("rejects a visibility mutation when the queued session instance changed", async () => {
     await withOpenClawTestState({ scenario: "minimal" }, async () => {
       const sessionKey = "agent:main:stale-sharing-mutation";
-      await upsertSessionEntry(
+      await upsertSessionEntryCore(
         { agentId: "main", sessionKey },
         {
           sessionId: "session-authorized",
@@ -220,7 +256,7 @@ describe("session sharing handlers", () => {
       const sessionKey = "agent:main:main";
       const owner = { id: "owner@example.com", label: "Owner" };
       const outsider = identifiedClient("outsider");
-      await upsertSessionEntry(
+      await upsertSessionEntryCore(
         { agentId: "main", sessionKey },
         {
           sessionId: "session-main",
@@ -264,7 +300,7 @@ describe("session sharing handlers", () => {
     await withOpenClawTestState({ scenario: "minimal" }, async () => {
       const sessionKey = "agent:main:shared-member";
       const memberIdentity = { id: "member@example.com", label: "Member" };
-      await upsertSessionEntry(
+      await upsertSessionEntryCore(
         { agentId: "main", sessionKey },
         {
           sessionId: "session-shared-member",
@@ -303,7 +339,7 @@ describe("session sharing handlers", () => {
   it("drops a session flipped to draft during the list await from a non-owner", async () => {
     await withOpenClawTestState({ scenario: "minimal" }, async () => {
       const sessionKey = "agent:main:mid-await-draft";
-      await upsertSessionEntry(
+      await upsertSessionEntryCore(
         { agentId: "main", sessionKey },
         {
           sessionId: "session-mid-await",
@@ -385,7 +421,7 @@ describe("session sharing handlers", () => {
     await withOpenClawTestState({ scenario: "minimal" }, async () => {
       const hiddenKey = "agent:main:mid-await-paged-draft";
       const visibleKey = "agent:main:mid-await-paged-visible";
-      await upsertSessionEntry(
+      await upsertSessionEntryCore(
         { agentId: "main", sessionKey: hiddenKey },
         {
           sessionId: "session-mid-await-paged-draft",
@@ -394,7 +430,7 @@ describe("session sharing handlers", () => {
           visibility: "shared",
         },
       );
-      await upsertSessionEntry(
+      await upsertSessionEntryCore(
         { agentId: "main", sessionKey: visibleKey },
         {
           sessionId: "session-mid-await-paged-visible",
@@ -444,7 +480,7 @@ describe("session sharing handlers", () => {
       if (!selectable) {
         throw new Error("expected member profile in picker identities");
       }
-      await upsertSessionEntry(
+      await upsertSessionEntryCore(
         { agentId: "main", sessionKey },
         {
           sessionId: "session-profile-member",
@@ -480,11 +516,11 @@ describe("session sharing handlers", () => {
 
   it("authorizes board tickets against their signed agent-relative session", async () => {
     await withOpenClawTestState({ scenario: "minimal" }, async () => {
-      await upsertSessionEntry(
+      await upsertSessionEntryCore(
         { agentId: "main", sessionKey: "global" },
         { sessionId: "session-main-global", updatedAt: 1, visibility: "shared" },
       );
-      await upsertSessionEntry(
+      await upsertSessionEntryCore(
         { agentId: "work", sessionKey: "global" },
         {
           sessionId: "session-work-global",
@@ -538,7 +574,7 @@ describe("session sharing handlers", () => {
       const owner = { id: "owner@example.com", label: "Owner" };
       const memberIdentity = { id: "member@example.com", label: "Member" };
       const memberClient = identifiedClient(memberIdentity.id, memberIdentity.label);
-      await upsertSessionEntry(
+      await upsertSessionEntryCore(
         { agentId: "main", sessionKey },
         {
           sessionId: "session-member-transition",
@@ -613,7 +649,7 @@ describe("session sharing handlers", () => {
   it("persists visibility and membership changes as transcript system notes", async () => {
     await withOpenClawTestState({ scenario: "minimal" }, async () => {
       const sessionKey = "agent:main:main";
-      await upsertSessionEntry(
+      await upsertSessionEntryCore(
         { agentId: "main", sessionKey },
         { sessionId: "session-main", updatedAt: 1 },
       );
@@ -668,7 +704,7 @@ describe("session sharing handlers", () => {
       );
 
       const restrictedKey = "agent:main:restricted";
-      await upsertSessionEntry(
+      await upsertSessionEntryCore(
         { agentId: "main", sessionKey: restrictedKey },
         {
           sessionId: "session-restricted",

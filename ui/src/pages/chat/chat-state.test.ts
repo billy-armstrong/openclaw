@@ -788,6 +788,39 @@ describe("ChatStateController render lifecycle", () => {
     expect(state.waitingApprovalStatuses.size).toBe(0);
   });
 
+  it("skips no-op assistant invalidation while tool and plan changes render immediately", () => {
+    const requestUpdate = vi.fn();
+    const state = createStreamEventState({
+      requestUpdate,
+      chatStreamSegments: [],
+      chatToolMessages: [],
+      toolStreamById: new Map(),
+      toolStreamOrder: [],
+      toolStreamSyncTimer: null,
+      planStatus: null,
+      sessions: { setModelOverride: vi.fn() } as never,
+    });
+    const emitAgent = (seq: number, stream: string, data: Record<string, unknown>) =>
+      handlePageGatewayEvent(state, {
+        type: "event",
+        event: "agent",
+        payload: { runId: "run-1", seq, stream, ts: seq, sessionKey: "main", data },
+      });
+
+    emitAgent(1, "assistant", { text: "Hello", delta: "Hello" });
+    expect(requestUpdate).not.toHaveBeenCalled();
+
+    emitAgent(2, "plan", {
+      phase: "update",
+      steps: [{ step: "Measure the repair", status: "in_progress" }],
+    });
+    expect(requestUpdate).toHaveBeenCalledOnce();
+
+    requestUpdate.mockClear();
+    emitAgent(3, "tool", { phase: "start", name: "read", toolCallId: "tool-1" });
+    expect(requestUpdate).toHaveBeenCalledOnce();
+  });
+
   it("coalesces stream invalidations into one animation frame", () => {
     let nextFrame = 1;
     const frames = new Map<number, FrameRequestCallback>();
@@ -1721,6 +1754,23 @@ describe("refreshChatMetadata", () => {
 });
 
 describe("refreshChatModelAuthStatus", () => {
+  it("scopes auth status to the selected session agent", async () => {
+    const request = vi.fn(async () => ({ ts: 1, providers: [] }));
+    const state = {
+      client: { request },
+      connected: true,
+      connectionEpoch: 1,
+      sessionKey: "agent:work:dashboard:current",
+      assistantAgentId: "main",
+      modelAuthStatusResult: null,
+      modelAuthStatusError: null,
+    } as unknown as ChatPageHost;
+
+    await refreshChatModelAuthStatus(state);
+
+    expect(request).toHaveBeenCalledWith("models.authStatus", { agentId: "work" });
+  });
+
   it.each(["success", "failure"] as const)(
     "ignores a stale auth status %s after reconnecting the same client",
     async (outcome) => {

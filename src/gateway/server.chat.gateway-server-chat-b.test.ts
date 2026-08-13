@@ -903,13 +903,15 @@ describe("gateway server chat", () => {
     }
   });
 
-  test("chat.history exposes persisted and synthetic session metadata for startup hydration", async () => {
+  test("chat.history exposes selected and synthetic session metadata for startup hydration", async () => {
     await withGatewayChatHarness(async ({ ws, createSessionDir }) => {
       await connectOk(ws);
       await createSessionDir();
       const updatedAt = Date.now();
       await writeStoredMainSession({
         updatedAt,
+        providerOverride: "openai",
+        modelOverride: "gpt-5",
         modelProvider: "openai",
         model: "gpt-5",
         contextTokens: 128_000,
@@ -1069,9 +1071,11 @@ describe("gateway server chat", () => {
         routeVariants: [],
       })),
     });
+    testState.agentsConfig = config.agents;
     openDirectChatSession();
     try {
       await writeSessionStore({
+        agentId: "work",
         entries: { "agent:work:main": { sessionId: "sess-work", updatedAt: Date.now() } },
       });
       const responses: Array<{ ok: boolean; payload?: unknown; error?: unknown }> = [];
@@ -1082,12 +1086,13 @@ describe("gateway server chat", () => {
         context,
       });
 
-      expect(responses[0]?.ok).toBe(true);
+      expect(responses[0]?.ok, JSON.stringify(responses[0])).toBe(true);
       expect(
         (responses[0]?.payload as { metadata?: { models?: unknown[] } })?.metadata?.models,
       ).toBe(undefined);
       expect(context.loadGatewayModelCatalogSnapshot).not.toHaveBeenCalled();
     } finally {
+      testState.agentsConfig = undefined;
       testState.sessionStorePath = undefined;
     }
   });
@@ -1452,7 +1457,7 @@ describe("gateway server chat", () => {
               }
             | undefined;
           expect(payload?.metadata?.models).toEqual([
-            {
+            expect.objectContaining({
               id: "gpt-5.5",
               name: "GPT-5.5",
               provider: "openai",
@@ -1460,7 +1465,7 @@ describe("gateway server chat", () => {
               contextWindow: 400_000,
               reasoning: false,
               available: true,
-            },
+            }),
           ]);
           expect(payload?.sessionInfo?.thinkingLevels?.map((level) => level.id)).toEqual(["off"]);
           expect(payload?.defaults?.thinkingLevels?.map((level) => level.id)).toEqual(["off"]);
@@ -5647,7 +5652,9 @@ describe("gateway server chat", () => {
       await writeGatewayConfig({
         session: { scope: "global" },
         agents: {
-          entries: { main: { default: true }, work: {} },
+          ownership: "explicit",
+          defaults: { sessionStore: { agentId: "work" } },
+          entries: { main: {}, work: {} },
         },
       });
       await connectOk(ws);

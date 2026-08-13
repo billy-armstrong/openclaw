@@ -154,7 +154,7 @@ export {
   resolveSessionEntryCandidateTarget,
   resolveSessionEntrySelection,
   updateResolvedSessionEntry,
-  upsertSessionEntry,
+  upsertSessionEntryCore,
 } from "./session-accessor.entry.js";
 export {
   createSessionEntryWithTranscript,
@@ -167,6 +167,10 @@ export {
   updateSessionEntry,
   updateSessionLastRoute,
 } from "./session-accessor.entry-mutation.js";
+export {
+  recoverSessionEntryFromRestartTombstone,
+  type RestartTombstoneRecoveryResult,
+} from "./session-accessor.sqlite-recovery.js";
 export {
   applySessionEntryLifecycleMutation,
   applySessionEntryReplacements,

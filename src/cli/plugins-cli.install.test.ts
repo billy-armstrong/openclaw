@@ -6,6 +6,7 @@ import { installedPluginRoot } from "openclaw/plugin-sdk/test-fixtures";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import type { OpenClawConfig } from "../config/config.js";
 import { hashConfigIncludeRaw } from "../config/includes.js";
+import { recordPluginManifestInstallOwner } from "../plugins/manifest-install-owner.js";
 import {
   listOfficialExternalPluginCatalogEntries,
   resolveOfficialExternalPluginId,
@@ -39,8 +40,8 @@ import {
   runPluginsCommand,
   runtimeErrors,
   pluginsCliRuntimeLogs,
-  writeConfigFile,
-  writePersistedInstalledPluginIndexInstallRecordsWithLease,
+  configWriteMock,
+  writePersistedInstalledPluginIndexInstallRecordsWithLeaseMock,
 } from "./plugins-cli-test-helpers.js";
 
 const CLI_STATE_ROOT = "/tmp/openclaw-state";
@@ -431,7 +432,7 @@ function hookNpmInstallCall(callIndex = 0): PluginInstallCall {
 
 function persistedInstallRecords(callIndex = 0): Record<string, PersistedInstallRecord> {
   return mockCallArg(
-    writePersistedInstalledPluginIndexInstallRecordsWithLease,
+    writePersistedInstalledPluginIndexInstallRecordsWithLeaseMock,
     callIndex,
   ) as Record<string, PersistedInstallRecord>;
 }
@@ -652,7 +653,7 @@ describe("plugins cli install", () => {
     expect(installPluginFromNpmSpecMock).not.toHaveBeenCalled();
     expect(installPluginFromPathMock).not.toHaveBeenCalled();
     expect(installPluginFromMarketplaceMock).not.toHaveBeenCalled();
-    expect(writeConfigFile).not.toHaveBeenCalled();
+    expect(configWriteMock).not.toHaveBeenCalled();
   });
 
   it.each(["@acme/demo-plugin", "npm:@acme/demo-plugin"])(
@@ -671,7 +672,7 @@ describe("plugins cli install", () => {
       expect(installHooksFromNpmSpecMock).toHaveBeenCalledTimes(1);
       expect(hookNpmInstallCall().inspection).toBe("package-kind");
       expect(installPluginFromNpmSpecMock).not.toHaveBeenCalled();
-      expect(writeConfigFile).not.toHaveBeenCalled();
+      expect(configWriteMock).not.toHaveBeenCalled();
       expect(runtimeErrors.at(-1)).toContain(
         "Config plugins are stored in an external or unresolved top-level $include",
       );
@@ -715,7 +716,7 @@ describe("plugins cli install", () => {
     expect(hookNpmInstallCall().inspection).toBe("package-kind");
     expect(hookNpmInstallCall(1).expectedIntegrity).toBe("sha256-demo");
     expect(hookNpmInstallCall(1).expectedPackageKind).toBe("hook-only");
-    expect(writeConfigFile).toHaveBeenCalledWith(installedCfg);
+    expect(configWriteMock).toHaveBeenCalledWith(installedCfg);
   });
 
   it("blocks npm package inspection when plugin and hook config are include-owned", async () => {
@@ -736,7 +737,7 @@ describe("plugins cli install", () => {
 
     expect(installHooksFromNpmSpecMock).not.toHaveBeenCalled();
     expect(installPluginFromNpmSpecMock).not.toHaveBeenCalled();
-    expect(writeConfigFile).not.toHaveBeenCalled();
+    expect(configWriteMock).not.toHaveBeenCalled();
     expect(runtimeErrors.at(-1)).toContain(
       "Config hooks are stored in an external or unresolved top-level $include",
     );
@@ -761,7 +762,7 @@ describe("plugins cli install", () => {
     expect(installHooksFromNpmSpecMock).toHaveBeenCalledTimes(1);
     expect(hookNpmInstallCall().inspection).toBe("package-kind");
     expect(installPluginFromNpmSpecMock).not.toHaveBeenCalled();
-    expect(writeConfigFile).not.toHaveBeenCalled();
+    expect(configWriteMock).not.toHaveBeenCalled();
     expect(runtimeErrors.at(-1)).toContain(
       "Config hooks are stored in an external or unresolved top-level $include",
     );
@@ -786,7 +787,7 @@ describe("plugins cli install", () => {
     }
 
     expect(installHooksFromPathMock).not.toHaveBeenCalled();
-    expect(writeConfigFile).not.toHaveBeenCalled();
+    expect(configWriteMock).not.toHaveBeenCalled();
     expect(runtimeErrors.at(-1)).toContain(
       "Config hooks are stored in an external or unresolved top-level $include",
     );
@@ -808,7 +809,7 @@ describe("plugins cli install", () => {
     expect(installHooksFromPathMock).toHaveBeenCalledTimes(1);
     expect(hookPathInstallCall().inspection).toBe("package-kind");
     expect(installPluginFromPathMock).not.toHaveBeenCalled();
-    expect(writeConfigFile).not.toHaveBeenCalled();
+    expect(configWriteMock).not.toHaveBeenCalled();
     expect(runtimeErrors.at(-1)).toContain(
       "Config hooks are stored in an external or unresolved top-level $include",
     );
@@ -856,7 +857,7 @@ describe("plugins cli install", () => {
       expect(hookPathInstallCall().inspection).toBe("package-kind");
       expect(hookPathInstallCall(1).expectedPackageKind).toBe("hook-only");
       expect(installPluginFromClawHubMock).not.toHaveBeenCalled();
-      expect(writeConfigFile).toHaveBeenCalledWith(installedCfg);
+      expect(configWriteMock).toHaveBeenCalledWith(installedCfg);
     },
   );
 
@@ -873,7 +874,7 @@ describe("plugins cli install", () => {
 
     expect(installHooksFromNpmSpecMock).not.toHaveBeenCalled();
     expect(installPluginFromNpmSpecMock).not.toHaveBeenCalled();
-    expect(writeConfigFile).not.toHaveBeenCalled();
+    expect(configWriteMock).not.toHaveBeenCalled();
     expect(runtimeErrors.at(-1)).toContain("unsupported $include shape at the root");
   });
 
@@ -895,7 +896,7 @@ describe("plugins cli install", () => {
 
     expect(installHooksFromPathMock).not.toHaveBeenCalled();
     expect(installPluginFromPathMock).not.toHaveBeenCalled();
-    expect(writeConfigFile).not.toHaveBeenCalled();
+    expect(configWriteMock).not.toHaveBeenCalled();
     expect(runtimeErrors.at(-1)).toContain("unsupported $include shape at the root");
   });
 
@@ -919,7 +920,7 @@ describe("plugins cli install", () => {
     expect(installHooksFromPathMock).toHaveBeenCalledTimes(1);
     expect(hookPathInstallCall().inspection).toBe("package-kind");
     expect(installPluginFromPathMock).not.toHaveBeenCalled();
-    expect(writeConfigFile).not.toHaveBeenCalled();
+    expect(configWriteMock).not.toHaveBeenCalled();
     expect(runtimeErrors.at(-1)).toContain(
       "Config plugins are stored in an external or unresolved top-level $include",
     );
@@ -939,7 +940,7 @@ describe("plugins cli install", () => {
     expect(installHooksFromNpmSpecMock).toHaveBeenCalledTimes(1);
     expect(hookNpmInstallCall().inspection).toBe("package-kind");
     expect(installPluginFromNpmSpecMock).not.toHaveBeenCalled();
-    expect(writeConfigFile).not.toHaveBeenCalled();
+    expect(configWriteMock).not.toHaveBeenCalled();
     expect(runtimeErrors.at(-1)).toContain(
       "Config plugins are stored in an external or unresolved top-level $include",
     );
@@ -964,7 +965,7 @@ describe("plugins cli install", () => {
     expect(installHooksFromPathMock).toHaveBeenCalledTimes(1);
     expect(hookPathInstallCall().inspection).toBe("package-kind");
     expect(installPluginFromPathMock).not.toHaveBeenCalled();
-    expect(writeConfigFile).not.toHaveBeenCalled();
+    expect(configWriteMock).not.toHaveBeenCalled();
     expect(runtimeErrors.at(-1)).toContain(
       "Config plugins are stored in an external or unresolved top-level $include",
     );
@@ -989,7 +990,7 @@ describe("plugins cli install", () => {
     expect(installHooksFromPathMock).toHaveBeenCalledTimes(1);
     expect(hookPathInstallCall().inspection).toBe("package-kind");
     expect(installPluginFromPathMock).not.toHaveBeenCalled();
-    expect(writeConfigFile).not.toHaveBeenCalled();
+    expect(configWriteMock).not.toHaveBeenCalled();
     expect(runtimeErrors.at(-1)).toContain(
       "Config plugins are stored in an external or unresolved top-level $include",
     );
@@ -1089,7 +1090,7 @@ describe("plugins cli install", () => {
       await expect(runPluginsCommand(commandArgs)).rejects.toThrow("__exit__:1");
 
       expect(installer).not.toHaveBeenCalled();
-      expect(writeConfigFile).not.toHaveBeenCalled();
+      expect(configWriteMock).not.toHaveBeenCalled();
       expect(runtimeErrors.at(-1)).toContain(
         "Config plugins are stored in an external or unresolved top-level $include",
       );
@@ -1103,7 +1104,7 @@ describe("plugins cli install", () => {
     await expect(runPluginsCommand(["plugins", "install", "brave"])).rejects.toThrow("__exit__:1");
 
     expect(installPluginFromNpmSpecMock).not.toHaveBeenCalled();
-    expect(writeConfigFile).not.toHaveBeenCalled();
+    expect(configWriteMock).not.toHaveBeenCalled();
     expect(runtimeErrors.at(-1)).toContain(
       "Config plugins are stored in an external or unresolved top-level $include",
     );
@@ -1120,7 +1121,7 @@ describe("plugins cli install", () => {
     await expect(runPluginsCommand(["plugins", "install", pluginId])).rejects.toThrow("__exit__:1");
 
     expect(installPluginFromPathMock).not.toHaveBeenCalled();
-    expect(writeConfigFile).not.toHaveBeenCalled();
+    expect(configWriteMock).not.toHaveBeenCalled();
     expect(runtimeErrors.at(-1)).toContain(
       "Config plugins are stored in an external or unresolved top-level $include",
     );
@@ -1155,7 +1156,7 @@ describe("plugins cli install", () => {
     }
 
     expect(installPluginFromMarketplaceMock).not.toHaveBeenCalled();
-    expect(writeConfigFile).not.toHaveBeenCalled();
+    expect(configWriteMock).not.toHaveBeenCalled();
     expect(runtimeErrors.at(-1)).toContain("nested $include");
   });
 
@@ -1189,7 +1190,7 @@ describe("plugins cli install", () => {
 
     expect(marketplaceInstallCall().marketplace).toBe("local/repo");
     expect(marketplaceInstallCall().plugin).toBe("alpha");
-    expect(writeConfigFile).not.toHaveBeenCalled();
+    expect(configWriteMock).not.toHaveBeenCalled();
   });
 
   it("passes the active profile extensions dir to marketplace installs", async () => {
@@ -1239,7 +1240,7 @@ describe("plugins cli install", () => {
     );
     expect(installPluginFromMarketplaceMock).not.toHaveBeenCalled();
     expect(installPluginFromNpmSpecMock).not.toHaveBeenCalled();
-    expect(writeConfigFile).not.toHaveBeenCalled();
+    expect(configWriteMock).not.toHaveBeenCalled();
   });
 
   it("installs marketplace plugins and persists plugin index", async () => {
@@ -1268,7 +1269,7 @@ describe("plugins cli install", () => {
       marketplaceSource: "local/repo",
       marketplacePlugin: "alpha",
     });
-    enablePluginInConfigMock.mockReturnValue({ config: enabledCfg });
+    enablePluginInConfigMock.mockReturnValue({ config: enabledCfg, enabled: true });
     buildPluginSnapshotReportMock.mockReturnValue({
       plugins: [{ id: "alpha", kind: "provider" }],
       diagnostics: [],
@@ -1276,19 +1277,22 @@ describe("plugins cli install", () => {
     const alphaRoot = cliInstallPath("alpha");
     loadPluginManifestRegistryMock.mockReturnValue({
       plugins: [
-        {
-          id: "alpha",
-          kind: "memory",
-          origin: "global",
-          channels: [],
-          providers: [],
-          cliBackends: [],
-          skills: [],
-          hooks: [],
-          rootDir: alphaRoot,
-          source: `${alphaRoot}/index.js`,
-          manifestPath: `${alphaRoot}/openclaw.plugin.json`,
-        },
+        recordPluginManifestInstallOwner(
+          {
+            id: "alpha",
+            kind: "memory",
+            origin: "global",
+            channels: [],
+            providers: [],
+            cliBackends: [],
+            skills: [],
+            hooks: [],
+            rootDir: alphaRoot,
+            source: `${alphaRoot}/index.js`,
+            manifestPath: `${alphaRoot}/openclaw.plugin.json`,
+          },
+          "alpha",
+        ),
       ],
       diagnostics: [],
     });
@@ -1307,7 +1311,7 @@ describe("plugins cli install", () => {
 
     expect(persistedInstallRecord("alpha").source).toBe("marketplace");
     expect(persistedInstallRecord("alpha").installPath).toBe(cliInstallPath("alpha"));
-    expect(writeConfigFile).toHaveBeenCalledWith(enabledCfg);
+    expect(configWriteMock).toHaveBeenCalledWith(enabledCfg);
     expect(replaceConfigCall().baseHash).toBe("mock");
     expect(replaceConfigCall().nextConfig).toBe(enabledCfg);
     expect(runtimeLogsContain("slot adjusted")).toBe(true);
@@ -1616,7 +1620,7 @@ describe("plugins cli install", () => {
     );
     expect(record.clawpackSize).toBe(4096);
     expect(readConfigFileSnapshotForWriteMock).toHaveBeenCalledTimes(2);
-    expect(writeConfigFile).toHaveBeenCalledWith(enabledCfg);
+    expect(configWriteMock).toHaveBeenCalledWith(enabledCfg);
     expect(runtimeLogsContain("Installed plugin: demo")).toBe(true);
     expect(reportClawHubPluginInstallTelemetryMock).toHaveBeenCalledWith({
       baseUrl: "https://clawhub.ai",
@@ -1628,7 +1632,7 @@ describe("plugins cli install", () => {
 
   it("does not report a ClawHub install when durable persistence fails", async () => {
     primeSuccessfulClawHubPluginInstall();
-    writeConfigFile.mockRejectedValueOnce(new Error("persistence failed"));
+    configWriteMock.mockRejectedValueOnce(new Error("persistence failed"));
 
     await expect(runPluginsCommand(["plugins", "install", "clawhub:demo"])).rejects.toThrow(
       "persistence failed",
@@ -1741,8 +1745,8 @@ describe("plugins cli install", () => {
 
     await runPluginsCommand(["plugins", "install", pluginId]);
 
-    const writtenConfig = writeConfigFile.mock.calls[
-      writeConfigFile.mock.calls.length - 1
+    const writtenConfig = configWriteMock.mock.calls[
+      configWriteMock.mock.calls.length - 1
     ]?.[0] as OpenClawConfig;
     expect(writtenConfig.plugins?.entries?.[pluginId]).toEqual({
       enabled: false,
@@ -1786,7 +1790,7 @@ describe("plugins cli install", () => {
       "has invalid configured settings",
     );
 
-    expect(writeConfigFile).not.toHaveBeenCalled();
+    expect(configWriteMock).not.toHaveBeenCalled();
     expect(enablePluginInConfigMock).not.toHaveBeenCalled();
   });
 
@@ -1824,7 +1828,7 @@ describe("plugins cli install", () => {
     await runPluginsCommand(["plugins", "install", pluginId]);
 
     expect(enablePluginInConfigMock).toHaveBeenCalledTimes(1);
-    expect(writeConfigFile).toHaveBeenCalledWith(enabledCfg);
+    expect(configWriteMock).toHaveBeenCalledWith(enabledCfg);
     expect(runtimeLogsContain("requires configuration first")).toBe(false);
   });
 
@@ -1879,7 +1883,7 @@ describe("plugins cli install", () => {
     expect(record.spec).toBe("@openclaw/brave-plugin");
     expect(record.installPath).toBe(cliInstallPath("brave"));
     expect(record.version).toBe("1.2.3");
-    expect(writeConfigFile).toHaveBeenCalledWith(enabledCfg);
+    expect(configWriteMock).toHaveBeenCalledWith(enabledCfg);
   });
 
   it("passes third-party external catalog integrity with catalog install trust", async () => {
@@ -1957,7 +1961,7 @@ describe("plugins cli install", () => {
     expect(record.spec).toBe("demo");
     expect(record.installPath).toBe(cliInstallPath("demo"));
     expect(record.version).toBe("1.2.3");
-    expect(writeConfigFile).toHaveBeenCalledWith(enabledCfg);
+    expect(configWriteMock).toHaveBeenCalledWith(enabledCfg);
   });
 
   it("stores npm resolution metadata without changing the active plugin install selector", async () => {
@@ -2006,7 +2010,7 @@ describe("plugins cli install", () => {
     expect(persistedInstallRecord("demo").source).toBe("npm");
     expect(persistedInstallRecord("demo").spec).toBe("demo");
     expect(persistedInstallRecord("demo").installPath).toBe(cliInstallPath("demo"));
-    expect(writeConfigFile).toHaveBeenCalledWith(enabledCfg);
+    expect(configWriteMock).toHaveBeenCalledWith(enabledCfg);
   });
 
   it("installs npm-pack archives through npm install semantics", async () => {
@@ -2031,7 +2035,7 @@ describe("plugins cli install", () => {
     expect(record.npmIntegrity).toBe("sha512-pack-demo");
     expect(record.npmShasum).toBe("packdemosha");
     expect(record.npmTarballName).toBe("openclaw-demo-1.2.3.tgz");
-    expect(writeConfigFile).toHaveBeenCalledWith(enabledCfg);
+    expect(configWriteMock).toHaveBeenCalledWith(enabledCfg);
   });
 
   it("keeps npm-prefixed official plugin ids on explicit npm semantics", async () => {
@@ -2257,7 +2261,7 @@ describe("plugins cli install", () => {
 
     expect(npmInstallCall().spec).toBe("memory-lancedb");
     expect(installPluginFromClawHubMock).not.toHaveBeenCalled();
-    expect(writeConfigFile).not.toHaveBeenCalled();
+    expect(configWriteMock).not.toHaveBeenCalled();
     expect(runtimeErrors.at(-1)).toContain("Package not found on npm: memory-lancedb.");
     expect(runtimeErrors.at(-1)).not.toContain("Also not a valid hook pack");
   });
@@ -2295,7 +2299,7 @@ describe("plugins cli install", () => {
     expect(record.gitUrl).toBe("https://github.com/acme/demo.git");
     expect(record.gitRef).toBe("v1.2.3");
     expect(record.gitCommit).toBe("abc123");
-    expect(writeConfigFile).toHaveBeenCalledWith(enabledCfg);
+    expect(configWriteMock).toHaveBeenCalledWith(enabledCfg);
   });
 
   it("rejects --pin for git installs and points at git refs", async () => {
@@ -2767,7 +2771,7 @@ describe("plugins cli install", () => {
     expect(record.resolvedSpec).toBe("@acme/demo-hooks@1.2.3");
     expect(record.integrity).toBe("sha256-demo");
     expect(record.hooks).toEqual(["command-audit"]);
-    expect(writeConfigFile).toHaveBeenCalledWith(installedCfg);
+    expect(configWriteMock).toHaveBeenCalledWith(installedCfg);
     expect(runtimeLogsContain("Installed hook pack: demo-hooks")).toBe(true);
   });
 

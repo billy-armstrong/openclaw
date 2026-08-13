@@ -1,19 +1,19 @@
 /** OpenRouter free-model scanner and fallback updater for model commands. */
 import { cancel, multiselect as clackMultiselect, isCancel } from "@clack/prompts";
 import { getEnvApiKey } from "@openclaw/ai/internal/runtime";
+import {
+  parseStrictFiniteNumber,
+  parseStrictPositiveInteger,
+} from "@openclaw/normalization-core/number-coercion";
 import { styleSelectParams } from "../../../packages/terminal-core/src/prompt-select-styled-params.js";
 import { stylePromptTitle } from "../../../packages/terminal-core/src/prompt-style.js";
 import { sanitizeTerminalText } from "../../../packages/terminal-core/src/safe-text.js";
-import { resolveApiKeyForProvider } from "../../agents/model-auth.js";
+import { resolveApiKeyForProviderCore } from "../../agents/model-auth.js";
 import { type ModelScanResult, scanOpenRouterModels } from "../../agents/model-scan.js";
 import { formatCliCommand } from "../../cli/command-format.js";
 import { withProgressTotals } from "../../cli/progress.js";
 import { logConfigUpdated } from "../../config/logging.js";
 import { toAgentModelListLike } from "../../config/model-input.js";
-import {
-  parseStrictFiniteNumber,
-  parseStrictPositiveInteger,
-} from "../../infra/parse-finite-number.js";
 import { type RuntimeEnv, writeRuntimeJson } from "../../runtime.js";
 import { padTerminalCell, truncate } from "./list.format.js";
 import { loadModelsConfig } from "./load-config.js";
@@ -223,7 +223,7 @@ export async function modelsScanCommand(
     if (!storedKey) {
       try {
         const cfg = await loadModelsConfig({ commandName: "models scan" });
-        const resolved = await resolveApiKeyForProvider({
+        const resolved = await resolveApiKeyForProviderCore({
           provider: "openrouter",
           cfg,
         });

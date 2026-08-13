@@ -152,6 +152,24 @@ describe("AgentsListResultSchema", () => {
     expectAccepted(AgentsListResultSchema, result);
   });
 
+  it("keeps the legacy default required while accepting additive ownership metadata", () => {
+    const legacy = {
+      defaultId: "ops",
+      mainKey: "main",
+      scope: "per-sender",
+      agents: [{ id: "ops" }, { id: "research" }],
+    };
+    const current = {
+      ...legacy,
+      ownership: "explicit",
+      selectionRequired: true,
+    };
+
+    expect(Value.Check(AgentsListResultSchema, legacy)).toBe(true);
+    expect(Value.Check(AgentsListResultSchema, current)).toBe(true);
+    expect(Value.Check(AgentsListResultSchema, { ...current, defaultId: undefined })).toBe(false);
+  });
+
   it("accepts system and legacy omitted kinds but rejects unknown kinds", () => {
     const result = {
       defaultId: "main",
@@ -183,10 +201,13 @@ describe("ModelsListParamsSchema", () => {
       {
         agentId: "writer",
         view: "all",
+      },
+      {
+        agentId: "research",
         includeProviderCapabilities: true,
       },
     );
-    expectRejected(ModelsListParamsSchema, { view: "provider-route" });
+    expectRejected(ModelsListParamsSchema, { view: "provider-route" }, { agentId: "" });
   });
 });
 
@@ -219,6 +240,11 @@ describe("ModelsListResultSchema", () => {
       name: "GPT Image",
       provider: "openai",
       agentRuntime: { id: "codex", fallback: "openclaw", source: "model" },
+      thinkingLevels: [
+        { id: "off", label: "Off" },
+        { id: "xhigh", label: "Extra high" },
+      ],
+      thinkingDefault: "xhigh",
       input: ["text", "image", "audio", "video", "document"],
     };
 
@@ -241,6 +267,7 @@ describe("ModelsListResultSchema", () => {
       {
         models: [{ ...model, agentRuntime: { id: "codex", source: "unknown" } }],
       },
+      { models: [{ ...model, thinkingLevels: [{ id: "", label: "Off" }] }] },
       { models: [{ ...model, input: ["text", "binary"] }] },
       { models: [], providerOutcomes: [{ provider: "openai", status: "unknown" }] },
       {

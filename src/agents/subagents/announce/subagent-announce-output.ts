@@ -28,7 +28,7 @@ import {
   readSubagentSessionEntry,
   readSessionMessagesAsync,
   resolveAgentIdFromSessionKey,
-  resolveStorePath,
+  resolveSessionStorePathCore,
 } from "./subagent-announce.runtime.js";
 import { assistantCallsSessionsYield, isSessionsYieldToolResult } from "./subagent-yield-output.js";
 
@@ -50,7 +50,7 @@ type SubagentAnnounceOutputDeps = {
   readSubagentSessionEntry: typeof readSubagentSessionEntry;
   readSessionMessagesAsync: typeof readSessionMessagesAsync;
   resolveAgentIdFromSessionKey: typeof resolveAgentIdFromSessionKey;
-  resolveStorePath: typeof resolveStorePath;
+  resolveSessionStorePathCore: typeof resolveSessionStorePathCore;
 };
 
 const defaultSubagentAnnounceOutputDeps: SubagentAnnounceOutputDeps = {
@@ -59,7 +59,7 @@ const defaultSubagentAnnounceOutputDeps: SubagentAnnounceOutputDeps = {
   readSubagentSessionEntry,
   readSessionMessagesAsync,
   resolveAgentIdFromSessionKey,
-  resolveStorePath,
+  resolveSessionStorePathCore,
 };
 
 let subagentAnnounceOutputDeps: SubagentAnnounceOutputDeps = defaultSubagentAnnounceOutputDeps;
@@ -588,6 +588,7 @@ export function filterCurrentDirectChildCompletionRows(
     runId: string;
     childSessionKey: string;
     requesterSessionKey: string;
+    requesterAgentId?: string;
     task: string;
     label?: string;
     createdAt: number;
@@ -600,10 +601,12 @@ export function filterCurrentDirectChildCompletionRows(
   }>,
   params: {
     requesterSessionKey: string;
+    requesterAgentId?: string;
     getLatestSubagentRunByChildSessionKey?: (childSessionKey: string) =>
       | {
           runId: string;
           requesterSessionKey: string;
+          requesterAgentId?: string;
         }
       | null
       | undefined;
@@ -618,7 +621,9 @@ export function filterCurrentDirectChildCompletionRows(
       return true;
     }
     return (
-      latest.runId === child.runId && latest.requesterSessionKey === params.requesterSessionKey
+      latest.runId === child.runId &&
+      latest.requesterSessionKey === params.requesterSessionKey &&
+      (!params.requesterAgentId || latest.requesterAgentId === params.requesterAgentId)
     );
   });
 }
@@ -649,7 +654,9 @@ export async function buildCompactAnnounceStatsLine(params: {
 }) {
   const cfg = subagentAnnounceOutputDeps.getRuntimeConfig();
   const agentId = subagentAnnounceOutputDeps.resolveAgentIdFromSessionKey(params.sessionKey);
-  const storePath = subagentAnnounceOutputDeps.resolveStorePath(cfg.session?.store, { agentId });
+  const storePath = subagentAnnounceOutputDeps.resolveSessionStorePathCore(cfg.session?.store, {
+    agentId,
+  });
   let entry = subagentAnnounceOutputDeps.readSubagentSessionEntry(storePath, params.sessionKey);
   const tokenWaitAttempts = isFastTestMode() ? 1 : 3;
   for (let attempt = 0; attempt < tokenWaitAttempts; attempt += 1) {
