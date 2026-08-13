@@ -158,6 +158,10 @@ const installRunEmbeddedMocks = () => {
       }),
       stopRuntimeAuthRefreshTimer: vi.fn(),
     }),
+    resolveEmbeddedAuthCooldownProbePolicy: () => ({
+      probeProfileIds: new Set<string>(),
+      unavailableReason: null,
+    }),
   }));
   vi.doMock("./models-config.js", async () => {
     const mod = await vi.importActual<typeof import("./models-config.js")>("./models-config.js");
@@ -462,6 +466,7 @@ describe("runEmbeddedAgent", () => {
 
     await runEmbeddedAgent({
       sessionId: "runtime-config-default-model",
+      agentId: "main",
       sessionFile,
       workspaceDir,
       prompt: "hello",
@@ -538,6 +543,7 @@ describe("runEmbeddedAgent", () => {
 
     await runEmbeddedAgent({
       sessionId: "model-only-provider-ref",
+      agentId: "main",
       sessionFile,
       workspaceDir,
       config: cfg,
@@ -576,6 +582,7 @@ describe("runEmbeddedAgent", () => {
 
     await runEmbeddedAgent({
       sessionId: "dynamic-model",
+      agentId: "main",
       sessionFile,
       workspaceDir,
       config: cfg,
@@ -643,6 +650,7 @@ describe("runEmbeddedAgent", () => {
 
     await runEmbeddedAgent({
       sessionId: "codex-first-openclaw",
+      agentId: "main",
       sessionFile,
       workspaceDir,
       config: cfg,
@@ -723,6 +731,7 @@ describe("runEmbeddedAgent", () => {
 
     const result = await runEmbeddedAgent({
       sessionId: "codex-runtime-model",
+      agentId: "main",
       sessionFile,
       workspaceDir,
       config: cfg,
@@ -795,6 +804,7 @@ describe("runEmbeddedAgent", () => {
 
     await runEmbeddedAgent({
       sessionId: "codex-static-catalog",
+      agentId: "main",
       sessionFile,
       workspaceDir,
       config: cfg,
@@ -840,6 +850,7 @@ describe("runEmbeddedAgent", () => {
 
     await runEmbeddedAgent({
       sessionId: "locked-codex-native-policy",
+      agentId: "main",
       sessionFile,
       workspaceDir,
       config: cfg,
@@ -926,6 +937,7 @@ describe("runEmbeddedAgent", () => {
 
     await runEmbeddedAgent({
       sessionId: "locked-codex-native-overflow",
+      agentId: "main",
       sessionFile,
       workspaceDir,
       config: createEmbeddedAgentRunnerOpenAiConfig([]),
@@ -987,7 +999,11 @@ describe("runEmbeddedAgent", () => {
 
   it("canonicalizes the session-id fallback when a whitespace-only key cannot be resolved", async () => {
     const sessionFile = "resume-124";
-    const cfg = createEmbeddedAgentRunnerOpenAiConfig(["mock-1"]);
+    const baseConfig = createEmbeddedAgentRunnerOpenAiConfig(["mock-1"]);
+    const cfg = {
+      ...baseConfig,
+      agents: { ...baseConfig.agents, list: [{ id: "main" }] },
+    };
     resolveSessionKeyForRequestMock.mockReturnValue({
       sessionKey: undefined,
       sessionStore: {},
@@ -1043,6 +1059,7 @@ describe("runEmbeddedAgent", () => {
 
     await runEmbeddedAgent({
       sessionId: "resume-456",
+      agentId: "main",
       sessionFile,
       workspaceDir,
       config: cfg,
@@ -1235,6 +1252,7 @@ describe("runEmbeddedAgent", () => {
 
     const result = await runEmbeddedAgent({
       sessionId: "session:test",
+      agentId: "main",
       sessionFile,
       workspaceDir,
       config: cfg,
