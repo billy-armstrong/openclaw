@@ -726,7 +726,8 @@ export function createChannelManager(opts: ChannelManagerOptions): ChannelManage
 
           scopedChannelRuntime = await measureStartup(`channels.${channelId}.runtime`, async () =>
             createTaskScopedChannelRuntime({
-              channelRuntime: registration?.channelRuntime ?? (await getChannelRuntime()),
+              channelRuntime:
+                registration?.resolveChannelRuntime?.() ?? (await getChannelRuntime()),
             }),
           );
           channelRuntimeForTask = scopedChannelRuntime.channelRuntime;
