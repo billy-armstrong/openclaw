@@ -22,4 +22,5 @@ export const CLAW_LAZY_ADDITIVE_STATE_COLUMN_DEFINITIONS = [
   { columnName: "terminal_reason", dataType: "TEXT", tableName: "worker_session_placements" },
   { columnName: "terminal_at_ms", dataType: "INTEGER", tableName: "worker_session_placements" },
   { columnName: "run_end_cleanup_json", dataType: "TEXT", tableName: "worktrees" },
+  { columnName: "allowed_hosts", dataType: "TEXT", tableName: "secret_store_entries" },
 ] as const satisfies readonly LazyAdditiveStateColumnDefinition[];
