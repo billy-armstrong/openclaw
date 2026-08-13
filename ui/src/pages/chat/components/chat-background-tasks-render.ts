@@ -21,7 +21,7 @@ export function renderBackgroundTasksToggle(
     return nothing;
   }
   const expanded = !backgroundTasks.collapsed;
-  const label = expanded ? t("chat.backgroundTasks.collapse") : t("chat.backgroundTasks.show");
+  const label = expanded ? t("chat.backgroundTasks.close") : t("chat.backgroundTasks.show");
   const activeCount = backgroundTasksActiveCount(backgroundTasks);
   return html`
     <openclaw-tooltip .content=${label}>
@@ -74,18 +74,16 @@ export function renderBackgroundTasksRail(
   const { active, recent } = partitionTasks(backgroundTasks.tasks ?? []);
   const loaded = backgroundTasks.tasks !== null;
   const empty = loaded && active.length === 0 && recent.length === 0;
-  const collapseButton = html`
-    <openclaw-tooltip .content=${t("chat.backgroundTasks.collapse")}>
+  const closeButton = html`
+    <openclaw-tooltip .content=${t("chat.backgroundTasks.close")}>
       <button
         type="button"
         class="nav-collapse-toggle chat-tasks-rail__collapse-toggle"
-        aria-label=${t("chat.backgroundTasks.collapse")}
+        aria-label=${t("chat.backgroundTasks.close")}
         aria-expanded="true"
         @click=${backgroundTasks.onToggleCollapsed}
       >
-        <span class="nav-collapse-toggle__icon" aria-hidden="true"
-          >${backgroundTasks.narrowLayout ? icons.panelBottomClose : icons.panelRightClose}</span
-        >
+        <span class="nav-collapse-toggle__icon" aria-hidden="true">${icons.x}</span>
       </button>
     </openclaw-tooltip>
   `;
@@ -116,7 +114,7 @@ export function renderBackgroundTasksRail(
                 >
                 <strong title=${taskTitle(viewedTask)}>${taskTitle(viewedTask)}</strong>
               </div>
-              <div class="chat-tasks-rail__actions">${collapseButton}</div>
+              <div class="chat-tasks-rail__actions">${closeButton}</div>
             `
           : html`
               <div class="chat-tasks-rail__title">
@@ -135,7 +133,7 @@ export function renderBackgroundTasksRail(
                     ${icons.refresh}
                   </button>
                 </openclaw-tooltip>
-                ${collapseButton}
+                ${closeButton}
               </div>
             `}
       </div>
