@@ -61,6 +61,7 @@ export type CodexNativePreToolUseFailure = {
 };
 
 export type CodexNativeHookRelay = NativeHookRelayRegistrationHandle & {
+  authorizeRetentionAfterSuccessfulYield: () => void;
   claimDirectChild: (threadId: string) => () => void;
   rejectPendingDirectChild: (threadId: string, reason: string) => void;
 };
@@ -174,6 +175,7 @@ export function createCodexNativeHookRelay(params: {
     }
   >();
   let foregroundClosed = false;
+  let successfulYieldRetentionAuthorized = false;
   const assertClaim = (threadId: string, claim: symbol) => () =>
     directChildClaims.get(threadId) === claim;
   const rejectPendingAdmissions = (reason: string) => {
@@ -214,7 +216,10 @@ export function createCodexNativeHookRelay(params: {
     assertActive: params.hostCapabilities.assertActive,
     retention: {
       readClaim: readCodexNativeChildThreadId,
-      shouldRetainAfterForegroundClose: () => directChildClaims.size > 0,
+      // A child claim identifies the subject; successful parent finalization
+      // separately authorizes its lifetime beyond foreground closure.
+      shouldRetainAfterForegroundClose: () =>
+        successfulYieldRetentionAuthorized && directChildClaims.size > 0,
       allowPreToolUse: (childThreadId) => directChildClaims.has(childThreadId),
       awaitForegroundAdmission: (childThreadId) => {
         if (foregroundClosed) {
@@ -262,6 +267,9 @@ export function createCodexNativeHookRelay(params: {
   return {
     ...relay,
     unregister,
+    authorizeRetentionAfterSuccessfulYield: () => {
+      successfulYieldRetentionAuthorized = true;
+    },
     rejectPendingDirectChild: (threadIdInput, reason) => {
       const threadId = threadIdInput.trim();
       const pending = threadId ? pendingDirectChildAdmissions.get(threadId) : undefined;

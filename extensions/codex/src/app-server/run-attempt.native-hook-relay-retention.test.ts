@@ -333,4 +333,118 @@ describe("runCodexAppServerAttempt native hook relay retention", () => {
       }
     },
   );
+
+  it("revokes a claimed child when the parent fails after sessions_yield", async () => {
+    const childThreadId = "child-failed-parent";
+    const sessionFile = path.join(tempDir, `${childThreadId}-session.jsonl`);
+    const workspaceDir = path.join(tempDir, `${childThreadId}-workspace`);
+    const harness = createStartedThreadHarness();
+    const params = createParams(sessionFile, workspaceDir);
+    params.disableTools = false;
+    params.runtimePlan = createCodexRuntimePlanFixture();
+    setCodexTestModelSupportsTools(params, true);
+    const fixture = await createAdmittedHostCapabilityTestFixture(params);
+    params.hostCapabilities = fixture.hostCapabilities;
+
+    const beforeToolCall = vi.fn(async () => undefined);
+    initializeGlobalHookRunner(
+      createMockPluginRegistry([{ hookName: "before_tool_call", handler: beforeToolCall }]),
+    );
+
+    const run = runCodexAppServerAttempt(params, {
+      nativeHookRelay: { enabled: true, events: ["pre_tool_use"] },
+    });
+    try {
+      await harness.waitForMethod("turn/start");
+      const startRequest = harness.requests.find((request) => request.method === "thread/start");
+      const relayId = extractRelayIdFromThreadRequest(startRequest?.params);
+      await harness.notify({
+        method: "thread/started",
+        params: {
+          thread: {
+            id: childThreadId,
+            parentThreadId: "thread-1",
+            source: {
+              subAgent: { thread_spawn: { parent_thread_id: "thread-1", depth: 1 } },
+            },
+          },
+        },
+      } as CodexServerNotification);
+      await harness.notify({
+        method: "item/completed",
+        params: {
+          threadId: "thread-1",
+          turnId: "turn-1",
+          item: {
+            type: "collabAgentToolCall",
+            tool: "spawnAgent",
+            status: "completed",
+            senderThreadId: "thread-1",
+            receiverThreadIds: [childThreadId],
+          },
+        },
+      } as unknown as CodexServerNotification);
+      const childPayload = {
+        hook_event_name: "PreToolUse",
+        agent_id: childThreadId,
+        cwd: workspaceDir,
+        tool_name: "Bash",
+        tool_use_id: `${childThreadId}-tool`,
+        tool_input: { command: "allow-child" },
+      };
+      await expect(
+        invokeNativeHookRelay({
+          provider: "codex",
+          relayId,
+          event: "pre_tool_use",
+          rawPayload: childPayload,
+        }),
+      ).resolves.toMatchObject({ exitCode: 0 });
+      expect(beforeToolCall).toHaveBeenCalledOnce();
+
+      await expect(
+        harness.handleServerRequest({
+          id: "request-sessions-yield-before-failure",
+          method: "item/tool/call",
+          params: {
+            threadId: "thread-1",
+            turnId: "turn-1",
+            callId: "yield-before-failure",
+            namespace: null,
+            tool: "sessions_yield",
+            arguments: { message: "Waiting for child" },
+          },
+        }),
+      ).resolves.toMatchObject({ success: true });
+      await harness.notify({
+        method: "turn/completed",
+        params: {
+          threadId: "thread-1",
+          turnId: "turn-1",
+          turn: {
+            id: "turn-1",
+            status: "failed",
+            error: { message: "parent failed after yielding" },
+          },
+        },
+      } as CodexServerNotification);
+
+      const result = await run;
+      expect(readAttemptTerminal(result).promptError).toContain("parent failed after yielding");
+      expect(
+        nativeHookRelayTesting.getNativeHookRelayRegistrationForTests(relayId),
+      ).toBeUndefined();
+      await expect(
+        invokeNativeHookRelay({
+          provider: "codex",
+          relayId,
+          event: "pre_tool_use",
+          rawPayload: childPayload,
+        }),
+      ).rejects.toThrow(/not found|inactive/);
+    } finally {
+      fixture.closeHost();
+      fixture.closeAdmission();
+    }
+  });
 });
