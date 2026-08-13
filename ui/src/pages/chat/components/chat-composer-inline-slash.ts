@@ -4,7 +4,7 @@ import {
   type SlashCommandDef,
 } from "../../../lib/chat/commands.ts";
 
-export type InlineSlashArgumentInvocation = {
+type InlineSlashArgumentInvocation = {
   command: SlashCommandDef;
   completion: InlineSlashCompletion;
 };
