@@ -237,6 +237,8 @@ describeControlUiE2e("Control UI device-token reconnect E2E", () => {
           role: "operator",
           scopes: OPERATOR_SCOPES,
           token: WILFRED_ROTATED_TOKEN,
+          rotatedAtMs: Date.now(),
+          tokenDelivery: "in-band",
         },
         "node.list": { nodes: [] },
       },
