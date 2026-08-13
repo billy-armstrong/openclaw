@@ -3846,6 +3846,23 @@ describe("chat slash menu accessibility", () => {
     expect(textarea.value).toBe(draft);
   });
 
+  it("does not consume trailing prose as a directly typed inline argument", () => {
+    let draft = "";
+    const onDraftChange = vi.fn((next: string) => {
+      draft = next;
+    });
+    const onSend = vi.fn();
+    const onSlashCommand = vi.fn();
+    const { container } = createReactiveDraftHarness({ onDraftChange, onSend, onSlashCommand });
+
+    inputDraftAtEnd(container, "before /think high then answer concisely");
+    keydownComposer(container, "Enter");
+
+    expect(onSlashCommand).not.toHaveBeenCalled();
+    expect(onSend).toHaveBeenCalledOnce();
+    expect(draft).toBe("before /think high then answer concisely");
+  });
+
   it("tab-completes an inline command argument without replacing surrounding prose", () => {
     let draft = "";
     const onDraftChange = vi.fn((next: string) => {
