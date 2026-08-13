@@ -48,6 +48,7 @@ type ChatModelControlsProps = {
   thinkingDefaults?: SessionsListResult["defaults"];
   thinkingSession?: ChatThinkingTarget;
   onFastModeSelect?: (value: ChatFastModeSelectValue, sessionKey: string) => unknown;
+  onModelPickerOpen?: () => unknown;
   onModelSelect?: (value: string, sessionKey: string) => unknown;
   onRequestUpdate?: () => void;
   onThinkingSelect?: (value: string, sessionKey: string) => unknown;
@@ -414,6 +415,7 @@ export function renderChatModelControls(props: ChatModelControlsProps) {
               (props.modelSelectionLocked ? t("chat.selectors.modelLockedLabel") : undefined),
             className: "chat-controls__model-picker",
             placement: "top",
+            onOpen: () => void props.onModelPickerOpen?.(),
             onChange: (next) => {
               if (
                 next !== currentOverride &&
