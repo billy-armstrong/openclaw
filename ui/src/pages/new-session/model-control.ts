@@ -2,12 +2,15 @@ import {
   DEFAULT_GATEWAY_REQUEST_TIMEOUT_MS,
   resolveGatewayStartupRetryAfterMs,
 } from "@openclaw/gateway-client/browser";
+import { html, nothing } from "lit";
 import type {
   SessionCatalog,
   SessionsCatalogListResult,
 } from "../../../../packages/gateway-protocol/src/index.ts";
-import type { GatewayAgentRow, GatewaySessionRow, ModelCatalogEntry } from "../../api/types.ts";
+import type { GatewayAgentRow, ModelCatalogEntry } from "../../api/types.ts";
 import type { ApplicationContext } from "../../app/context.ts";
+import { icons } from "../../components/icons.ts";
+import { renderPicker } from "../../components/select-picker.ts";
 import { t } from "../../i18n/index.ts";
 import {
   buildQualifiedChatModelValue,
@@ -584,14 +587,10 @@ export class NewSessionModelControl {
       this.catalog,
     );
     const selectedTarget = resolveDraftModelTarget(this.selected, undefined, this.catalog);
-    const draftRow: GatewaySessionRow = {
-      key: sessionKey,
-      kind: "direct",
-      updatedAt: null,
-      ...(selectedTarget
-        ? { model: selectedTarget.model, modelProvider: selectedTarget.provider ?? undefined }
-        : {}),
-      ...(this.thinkingLevel ? { thinkingLevel: this.thinkingLevel } : {}),
+    const thinkingTarget = {
+      model: selectedTarget?.model,
+      modelProvider: selectedTarget?.provider ?? undefined,
+      thinkingLevel: this.thinkingLevel || undefined,
     };
     const thinkingDefaults = {
       ...sourceResult?.defaults,
@@ -604,7 +603,31 @@ export class NewSessionModelControl {
       thinkingDefault:
         options.agent?.thinkingDefault ?? sourceResult?.defaults.thinkingDefault ?? "medium",
     };
-    return renderChatModelControls({
+    const targetPicker =
+      this.catalogTargets.length > 0
+        ? renderPicker({
+            label: t("newSession.cliAgentsGroup"),
+            value: "",
+            options: [
+              { value: "", label: t("newSession.cliAgentsGroup"), disabled: true },
+              ...this.catalogTargets.map(({ id, label }) => ({ value: id, label })),
+            ],
+            disabled: options.sending || snapshot?.phase !== "connected",
+            className: "new-session-page__target-picker",
+            renderLeading: (option) =>
+              option.value
+                ? html`<span class="new-session-page__target-icon" aria-hidden="true"
+                    >${icons.terminal}</span
+                  >`
+                : nothing,
+            onChange: (catalogId) => {
+              if (catalogId) {
+                this.onCatalogTargetSelect(catalogId);
+              }
+            },
+          })
+        : nothing;
+    return html`${targetPicker}${renderChatModelControls({
       activeRunId: null,
       agentDefaultModel,
       connected: snapshot?.phase === "connected",
@@ -622,16 +645,6 @@ export class NewSessionModelControl {
             : this.metadataState.status,
       },
       modelOverrides: { [sessionKey]: this.selected },
-      modelPickerTargetGroups:
-        this.catalogTargets.length > 0
-          ? [
-              {
-                id: "cliAgents",
-                label: t("newSession.cliAgentsGroup"),
-                options: this.catalogTargets.map(({ id, label }) => ({ value: id, label })),
-              },
-            ]
-          : undefined,
       modelSwitching: false,
       sending: options.sending,
       sessionKey,
@@ -639,7 +652,7 @@ export class NewSessionModelControl {
       showFastMode: false,
       stream: null,
       thinkingDefaults,
-      thinkingSession: draftRow,
+      thinkingSession: thinkingTarget,
       onModelSelect: (value) => {
         this.selectionGeneration += 1;
         this.restoringPreference = false;
@@ -647,19 +660,16 @@ export class NewSessionModelControl {
         this.selected = selection.model;
         this.thinkingLevel = selection.thinkingLevel;
         this.onSelectionChange({ model: this.selected, thinkingLevel: this.thinkingLevel });
-      },
-      onModelPickerTargetSelect: (groupId, catalogId) => {
-        if (groupId === "cliAgents") {
-          this.onCatalogTargetSelect(catalogId);
-        }
+        this.notify();
       },
       onThinkingSelect: (value) => {
         this.selectionGeneration += 1;
         this.restoringPreference = false;
         this.thinkingLevel = value;
         this.onSelectionChange({ model: this.selected, thinkingLevel: this.thinkingLevel });
+        this.notify();
       },
       onRequestUpdate: this.notify,
-    });
+    })}`;
   }
 }

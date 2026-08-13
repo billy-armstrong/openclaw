@@ -9,7 +9,7 @@ const suite = createControlUiE2eSuite({
 });
 
 suite.define(() => {
-  it("keeps focus in place when pointer-opening passive composer popovers", async () => {
+  it("routes focus by composer accessory purpose", async () => {
     await suite.withPage({ viewport: { width: 1440, height: 900 } }, async ({ page }) => {
       const gateway = await installMockGateway(page, {
         models: [{ id: "gpt-5.6", name: "GPT-5.6", provider: "openai" }],
@@ -114,28 +114,23 @@ suite.define(() => {
         await trigger.press("Enter");
       }
 
-      for (const popover of [
-        {
-          focus: ".chat-controls__model-search",
-          trigger: ".chat-controls__model-picker > summary",
-        },
-        {
-          focus: ".agent-chat__attach-menu-option",
-          trigger: ".agent-chat__input-btn--attach",
-        },
-      ]) {
-        await outside.focus();
-        await composer.locator(popover.trigger).click();
-        await expect
-          .poll(() =>
-            page
-              .locator(popover.focus)
-              .first()
-              .evaluate((element) => document.activeElement === element),
-          )
-          .toBe(true);
-        await page.keyboard.press("Escape");
-      }
+      const modelTrigger = composer.locator("wa-select.chat-controls__model-picker");
+      await outside.focus();
+      await modelTrigger.click();
+      await expect.poll(() => modelTrigger.getAttribute("open")).toBe("");
+      await page.keyboard.press("Escape");
+
+      await outside.focus();
+      await composer.locator(".agent-chat__input-btn--attach").click();
+      await expect
+        .poll(() =>
+          page
+            .locator(".agent-chat__attach-menu-option")
+            .first()
+            .evaluate((element) => document.activeElement === element),
+        )
+        .toBe(true);
+      await page.keyboard.press("Escape");
     });
   });
 });

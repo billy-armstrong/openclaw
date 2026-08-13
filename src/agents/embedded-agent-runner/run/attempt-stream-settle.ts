@@ -92,6 +92,7 @@ type StreamSettleResult = {
   lastAssistant: EmbeddedRunAttemptResult["lastAssistant"];
   currentAttemptAssistant: EmbeddedRunAttemptResult["currentAttemptAssistant"];
   currentAttemptCompletedAssistant: EmbeddedRunAttemptResult["currentAttemptCompletedAssistant"];
+  successfulNestedToolNames: string[];
   attemptUsage: EmbeddedRunAttemptResult["attemptUsage"];
   cacheBreak: PromptCacheBreak | null;
   lastCallUsage: NormalizedUsage | undefined;
@@ -426,6 +427,15 @@ export async function settleEmbeddedAttemptStream(input: {
     lastAssistant,
     currentAttemptAssistant,
     currentAttemptCompletedAssistant,
+    successfulNestedToolNames: [
+      ...new Set(
+        input.toolSearchTargetTranscriptProjections
+          // Receipt evidence admits only projections explicitly recorded as successful.
+          .filter((projection) => Object.is(projection.isError, false))
+          .map((projection) => projection.toolName.trim())
+          .filter(Boolean),
+      ),
+    ],
     attemptUsage,
     cacheBreak,
     lastCallUsage,
@@ -619,6 +629,7 @@ export async function prepareEmbeddedAttemptTransport(input: {
         `(${attempt.provider}/${attempt.modelId})`,
     );
   }
+  session.agent.transport = effectiveAgentTransport;
   return {
     effectiveAgentTransport,
     effectiveExtraParams,
