@@ -106,10 +106,17 @@ function readAssistantToolCalls(message: Record<string, unknown>): Array<{
   });
 }
 
-function isQaDeliveryMirror(message: Record<string, unknown>): boolean {
-  // Provider/model provenance distinguishes OpenClaw delivery bookkeeping from
+function readQaTranscriptArtifactModel(
+  message: Record<string, unknown>,
+): "delivery-mirror" | "gateway-injected" | undefined {
+  // Provider/model provenance distinguishes known OpenClaw bookkeeping from
   // real model output; marker-only historical rows are not strong QA evidence.
-  return message.provider === "openclaw" && message.model === "delivery-mirror";
+  if (message.provider !== "openclaw") {
+    return undefined;
+  }
+  return message.model === "delivery-mirror" || message.model === "gateway-injected"
+    ? message.model
+    : undefined;
 }
 
 function summarizeSessionTranscriptEvents(
@@ -200,12 +207,16 @@ function summarizeSessionTranscriptEvents(
     }
     const text = extractGatewayMessageText(message);
     if (text) {
-      // A same-turn delivery mirror cannot replace the provider's final. After
-      // a user/tool boundary, a mirror may be the only legitimate reply.
-      if (!isQaDeliveryMirror(message) || !hasCurrentTurnProviderFinalText) {
+      const artifactModel = readQaTranscriptArtifactModel(message);
+      // Gateway-injected rows are never provider output. A delivery mirror may
+      // supply the reply only when the current turn has no provider final.
+      if (
+        artifactModel === undefined ||
+        (artifactModel === "delivery-mirror" && !hasCurrentTurnProviderFinalText)
+      ) {
         finalText = text;
       }
-      if (!isQaDeliveryMirror(message)) {
+      if (artifactModel === undefined) {
         hasCurrentTurnProviderFinalText = true;
       }
     }

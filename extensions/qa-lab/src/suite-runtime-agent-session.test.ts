@@ -526,6 +526,41 @@ describe("qa suite runtime agent session helpers", () => {
     });
   });
 
+  it("keeps the provider final across gateway bookkeeping and a delivery mirror", async () => {
+    const tempRoot = await makeTempDir("qa-session-transcript-gateway-bookkeeping-");
+    const sessionKey = "agent:qa:gateway-bookkeeping";
+    const sessionId = "session-gateway-bookkeeping";
+    const providerFinalText = "The provider supplied the durable child result.";
+    await seedQaSession({ tempRoot, sessionKey, sessionId });
+    for (const message of [
+      {
+        role: "assistant",
+        provider: "openai",
+        model: "gpt-5.6-luna",
+        content: providerFinalText,
+      },
+      {
+        role: "assistant",
+        provider: "openclaw",
+        model: "gateway-injected",
+        content: "Gateway bookkeeping must not become the provider final.",
+      },
+      {
+        role: "assistant",
+        provider: "openclaw",
+        model: "delivery-mirror",
+        content: "Delivery bookkeeping must not replace the provider final.",
+        openclawDeliveryMirror: { kind: "channel-final", sourceMessageId: "child-delivery" },
+      },
+    ]) {
+      await appendQaTranscriptMessage({ tempRoot, sessionKey, sessionId, message });
+    }
+
+    await expect(
+      readSessionTranscriptSummary({ gateway: { tempRoot } } as never, sessionKey),
+    ).resolves.toMatchObject({ finalText: providerFinalText });
+  });
+
   it("uses a delivery mirror as the final text when no provider reply exists", async () => {
     const tempRoot = await makeTempDir("qa-session-transcript-delivery-only-");
     const sessionKey = "agent:qa:delivery-only";
