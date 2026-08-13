@@ -3575,6 +3575,21 @@ describe("chat slash menu accessibility", () => {
     expect(onSend).not.toHaveBeenCalled();
   });
 
+  it("hides immediate inline commands when the active composer has no command owner", () => {
+    let draft = "";
+    const onDraftChange = vi.fn((next: string) => {
+      draft = next;
+    });
+    const { container } = createReactiveDraftHarness({ onDraftChange });
+
+    inputDraftAtEnd(container, "catalog /statu");
+    expect(container.querySelector(".slash-menu")).toBeNull();
+
+    inputDraftAtEnd(container, "catalog /verb");
+    expect(container.querySelector(".slash-menu-name")?.textContent?.trim()).toBe("/verbose");
+    expect(draft).toBe("catalog /verb");
+  });
+
   it("keeps a selected inline directive argument in the eventual chat turn", () => {
     let draft = "";
     const onDraftChange = vi.fn((next: string) => {

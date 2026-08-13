@@ -4616,6 +4616,18 @@ export const en: TranslationMap = {
       openParent: "Open parent session {title}",
       panels: "Panels",
       layout: "Layout",
+      continueInTerminal: {
+        action: "Continue in terminal…",
+        title: "Continue in terminal",
+        description:
+          "Copy this command to continue the current session. It is safe to paste in common terminals and shells.",
+        authNote:
+          "The command contains no credentials. The terminal authenticates independently, and the session's access controls still apply.",
+        disconnected: "Connect to the Gateway to continue this session in a terminal.",
+        queryRouted:
+          "Query-routed Gateway URLs cannot create credential-free continuation commands because authentication and stored device scope are not query-aware. Use a manually authenticated CLI target or a queryless configured Gateway URL.",
+        unavailable: "This session or Gateway address cannot be continued in a terminal.",
+      },
       workspaceAria: "Workspace actions for {workspace}",
       revealFinder: "Reveal in Finder",
       revealFileExplorer: "Reveal in File Explorer",
@@ -4783,6 +4795,10 @@ export const en: TranslationMap = {
       label: "Session reset",
       description: "The earlier conversation was cleared.",
     },
+    restartRecoveryTitle: "This session ended during a restart.",
+    restartRecoveryDisabled: "Its transcript is safe.",
+    resumeInNewSession: "Resume in new session",
+    resumingSession: "Resuming…",
     systemNotice: {
       restartRecovery: {
         label: "System · restart recovery",
@@ -5373,17 +5389,11 @@ export const en: TranslationMap = {
         otherMany: "used {count} tools",
         emptyOne: "Ran a tool call",
         emptyMany: "Ran {count} tool calls",
-        failedOne: "{count} failed",
-        failedMany: "{count} failed",
-        activityErrorOne: "Activity: {count} tool, includes errors.",
-        activityErrorMany: "Activity: {count} tools, includes errors.",
       },
     },
     workRun: {
       workedFor: "Worked for {duration}",
       worked: "Worked",
-      workedForError: "Worked for {duration}, includes errors.",
-      workedError: "Worked, includes errors.",
     },
     backgroundTasks: {
       label: "Background tasks",
@@ -5462,6 +5472,9 @@ export const en: TranslationMap = {
       openInEditor: "Open in Editor",
       revealInFileTree: "Reveal in File Tree",
       unmodifiedLines: "{count} unmodified lines",
+      expandPreviousLines: "Show previous {count} unmodified lines",
+      expandNextLines: "Show next {count} unmodified lines",
+      expandAllLines: "Show all {count} unmodified lines",
       binaryFile: "Binary file",
       untracked: "untracked",
       tooLarge: "Diff too large to display.",

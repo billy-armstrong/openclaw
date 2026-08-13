@@ -124,7 +124,8 @@ function cleanInlineSkillInvocation(body: string, start: number, end: number): s
   return `${body.slice(0, start)} ${body.slice(end)}`.replace(/[^\S\r\n]+/gu, " ").trim();
 }
 
-function resolveInlineSkillCommandInvocation(params: {
+/** Internal reply-pipeline resolver for explicit colon-marked inline skill invocations. */
+export function resolveInlineSkillCommandInvocation(params: {
   commandBodyNormalized: string;
   skillCommands: SkillCommandSpec[];
 }): { command: SkillCommandSpec; args?: string; inline: true } | null {
@@ -164,7 +165,7 @@ function resolveInlineSkillCommandInvocation(params: {
 export function resolveSkillCommandInvocation(params: {
   commandBodyNormalized: string;
   skillCommands: SkillCommandSpec[];
-}): { command: SkillCommandSpec; args?: string; inline?: boolean } | null {
+}): { command: SkillCommandSpec; args?: string } | null {
   const trimmed = params.commandBodyNormalized.trim();
   if (trimmed.startsWith("/")) {
     const match = trimmed.match(/^\/([^\s]+)(?:\s+([\s\S]+))?$/);
@@ -199,5 +200,5 @@ export function resolveSkillCommandInvocation(params: {
       return { command, args: args || undefined };
     }
   }
-  return resolveInlineSkillCommandInvocation(params);
+  return null;
 }

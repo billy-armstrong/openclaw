@@ -141,6 +141,7 @@ export function updateSlashMenu(
     const items = getSlashCommandCompletions(completion.query, {
       showAll: true,
       inlineOnly: completion.inline,
+      allowImmediateInlineCommands: Boolean(props.onSlashCommand),
     });
     state.slashMenuCompletion = completion;
     state.slashMenuItems = items;

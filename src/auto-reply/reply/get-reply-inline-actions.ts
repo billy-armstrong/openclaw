@@ -1,8 +1,5 @@
 /** Handles inline slash commands, skill invocations, and abort actions before model runs. */
-import {
-  normalizeOptionalLowercaseString,
-  normalizeOptionalString,
-} from "@openclaw/normalization-core/string-coerce";
+import { normalizeOptionalString } from "@openclaw/normalization-core/string-coerce";
 import { collectTextContentBlocks } from "../../agents/content-blocks.js";
 import type { BlockReplyChunking } from "../../agents/embedded-agent-block-chunker.js";
 import type { ExecPolicyOverrides } from "../../agents/exec-defaults.js";
@@ -13,6 +10,7 @@ import { logVerbose } from "../../globals.js";
 import { formatErrorMessage } from "../../infra/errors.js";
 import { generateSecureToken } from "../../infra/secure-random.js";
 import { createLazyImportLoader } from "../../shared/lazy-promise.js";
+import { resolveInlineSkillCommandInvocation } from "../../skills/discovery/chat-command-invocation.js";
 import {
   hasSkillReferenceCandidate,
   listReservedChatSlashCommandNames,
@@ -51,7 +49,11 @@ import type { InlineDirectives } from "./directive-handling.parse.js";
 import { extractExplicitGroupId } from "./group-id.js";
 import { stripMentions, stripStructuralPrefixes } from "./mentions.js";
 import type { createModelSelectionState } from "./model-selection.js";
-import { extractInlineSimpleCommand } from "./reply-inline.js";
+import {
+  extractInlineSimpleCommand,
+  getStandaloneSlashCommandName,
+  listColonMarkedInlineSkillNames,
+} from "./reply-inline.js";
 import type { TypingController } from "./typing.js";
 
 type SkillCommandsRuntime = typeof import("../../skills/discovery/chat-commands.runtime.js");
@@ -77,15 +79,12 @@ const commandsRuntimeLoader = createLazyImportLoader<CommandsRuntime>(
 );
 let builtinSlashCommands: Set<string> | null = null;
 const MAX_EXPLICIT_SKILL_REFERENCES = 8;
-
 function loadSkillCommandsRuntime(): Promise<SkillCommandsRuntime> {
   return skillCommandsRuntimeLoader.load();
 }
-
 function loadSkillToolDispatchRuntime(): Promise<SkillToolDispatchRuntime> {
   return skillToolDispatchRuntimeLoader.load();
 }
-
 function loadAbortCutoffRuntime(): Promise<AbortCutoffRuntime> {
   return abortCutoffRuntimeLoader.load();
 }
@@ -110,18 +109,6 @@ function getBuiltinSlashCommands(): Set<string> {
     "queue",
   ]);
   return builtinSlashCommands;
-}
-
-function listSlashCommandNames(commandBodyNormalized: string): string[] {
-  const names: string[] = [];
-  const pattern = /(?:^|\s)\/([^\s:]+)(?=$|\s|:)/giu;
-  for (const match of commandBodyNormalized.matchAll(pattern)) {
-    const name = normalizeOptionalLowercaseString(match[1]);
-    if (name) {
-      names.push(name);
-    }
-  }
-  return names;
 }
 
 function applyExplicitSkillReferences(
@@ -352,7 +339,8 @@ export async function handleInlineActions(params: {
     return { kind: "reply", reply: undefined };
   }
 
-  const slashCommandNames = listSlashCommandNames(command.commandBodyNormalized);
+  const standaloneSlashName = getStandaloneSlashCommandName(command.commandBodyNormalized);
+  const inlineSkillMarkerNames = listColonMarkedInlineSkillNames(command.commandBodyNormalized);
   const hasSkillReferences =
     command.isAuthorizedSender &&
     ctx.Surface === INTERNAL_MESSAGE_CHANNEL &&
@@ -360,11 +348,10 @@ export async function handleInlineActions(params: {
   const shouldLoadSkillCommands =
     allowTextCommands &&
     (hasSkillReferences ||
-      slashCommandNames.some(
-        (name) =>
-          // `/skill …` needs the full skill command list. Unknown slash names may
-          // also be inline skill invocations embedded in an otherwise normal message.
-          name === "skill" || !getBuiltinSlashCommands().has(name),
+      (standaloneSlashName !== null &&
+        (standaloneSlashName === "skill" || !getBuiltinSlashCommands().has(standaloneSlashName))) ||
+      inlineSkillMarkerNames.some(
+        (name) => name === "skill" || !getBuiltinSlashCommands().has(name),
       ));
   const canReusePreloadedSkillCommands = execOverrides === undefined;
   const skillCommands =
@@ -385,24 +372,33 @@ export async function handleInlineActions(params: {
           })
         : [];
 
-  let skillInvocation =
+  let skillInvocation:
+    | ReturnType<typeof resolveSkillCommandInvocation>
+    | ReturnType<typeof resolveInlineSkillCommandInvocation> =
     allowTextCommands && skillCommands.length > 0
       ? resolveSkillCommandInvocation({
           commandBodyNormalized: command.commandBodyNormalized,
           skillCommands,
         })
       : null;
+  if (
+    !skillInvocation &&
+    allowTextCommands &&
+    skillCommands.length > 0 &&
+    command.isAuthorizedSender
+  ) {
+    skillInvocation = resolveInlineSkillCommandInvocation({
+      commandBodyNormalized: command.commandBodyNormalized,
+      skillCommands,
+    });
+  }
   if (skillInvocation) {
     if (!command.isAuthorizedSender) {
-      if (skillInvocation.inline) {
-        skillInvocation = null;
-      } else {
-        logVerbose(
-          `Ignoring /${skillInvocation.command.name} from unauthorized sender: ${command.senderId || "<unknown>"}`,
-        );
-        typing.cleanup();
-        return { kind: "reply", reply: undefined };
-      }
+      logVerbose(
+        `Ignoring /${skillInvocation.command.name} from unauthorized sender: ${command.senderId || "<unknown>"}`,
+      );
+      typing.cleanup();
+      return { kind: "reply", reply: undefined };
     }
   }
   if (skillInvocation) {

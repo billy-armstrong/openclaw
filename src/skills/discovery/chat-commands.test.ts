@@ -210,40 +210,13 @@ describe("resolveSkillCommandInvocation", () => {
     expect(invocation?.args).toBe("first line\nsecond line");
   });
 
-  it("matches direct skill invocations embedded in a sentence", () => {
-    const invocation = resolveSkillCommandInvocation({
-      commandBodyNormalized: "Please use /demo_skill: to do the thing",
-      skillCommands: [{ name: "demo_skill", skillName: "demo-skill", description: "Demo" }],
-    });
-    expect(invocation?.command.skillName).toBe("demo-skill");
-    expect(invocation?.args).toBe("Please use to do the thing");
-    expect(invocation?.inline).toBe(true);
-  });
-
-  it("matches /skill invocations embedded in a sentence", () => {
-    const invocation = resolveSkillCommandInvocation({
-      commandBodyNormalized: "Please ask /skill:demo_skill about this",
-      skillCommands: [{ name: "demo_skill", skillName: "demo-skill", description: "Demo" }],
-    });
-    expect(invocation?.command.name).toBe("demo_skill");
-    expect(invocation?.args).toBe("Please ask about this");
-    expect(invocation?.inline).toBe(true);
-  });
-
-  it.each(["Please use /hidden_skill: for this", "Please use /skill:hidden_skill for this"])(
-    "does not resolve model-hidden inline skill invocations in %j",
+  it.each(["Please use /demo_skill: to do the thing", "Please ask /skill:demo_skill about this"])(
+    "keeps the public resolver limited to standalone commands for %j",
     (commandBodyNormalized) => {
       expect(
         resolveSkillCommandInvocation({
           commandBodyNormalized,
-          skillCommands: [
-            {
-              name: "hidden_skill",
-              skillName: "hidden-skill",
-              description: "Slash only",
-              modelVisible: false,
-            },
-          ],
+          skillCommands: [{ name: "demo_skill", skillName: "demo-skill", description: "Demo" }],
         }),
       ).toBeNull();
     },
