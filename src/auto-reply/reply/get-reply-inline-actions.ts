@@ -385,7 +385,8 @@ export async function handleInlineActions(params: {
     !skillInvocation &&
     allowTextCommands &&
     skillCommands.length > 0 &&
-    command.isAuthorizedSender
+    command.isAuthorizedSender &&
+    ctx.Surface === INTERNAL_MESSAGE_CHANNEL
   ) {
     skillInvocation = resolveInlineSkillCommandInvocation({
       commandBodyNormalized: command.commandBodyNormalized,
