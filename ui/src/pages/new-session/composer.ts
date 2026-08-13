@@ -13,6 +13,7 @@ import type { NewSessionModelControl } from "./model-control.ts";
 type NewSessionComposerOptions = {
   agent?: import("../../api/types.ts").GatewayAgentRow;
   agentId: string;
+  getCurrentAgentId: () => string;
   attachments: ChatAttachment[];
   canSubmit: boolean;
   context: import("../../app/context.ts").ApplicationContext | undefined;
@@ -212,7 +213,21 @@ function renderNewSessionComposer(options: NewSessionComposerOptions) {
     onDraftChange: options.onInput,
     onRequestUpdate: options.onRequestUpdate,
     onSlashIntent: client
-      ? () => refreshSlashCommands({ client, agentId: options.agentId })
+      ? () => {
+          const agentId = options.agentId;
+          return refreshSlashCommands({
+            client,
+            agentId,
+            shouldApply: () => {
+              const snapshot = options.context?.gateway.snapshot;
+              return (
+                snapshot?.phase === "connected" &&
+                snapshot.client === client &&
+                options.getCurrentAgentId() === agentId
+              );
+            },
+          });
+        }
       : undefined,
     onSend: options.onSubmit,
     onAttachmentsChange: options.onAttachmentsChange,
@@ -222,6 +237,7 @@ function renderNewSessionComposer(options: NewSessionComposerOptions) {
 export function renderNewSessionDraftComposer(options: {
   agent?: import("../../api/types.ts").GatewayAgentRow;
   agentId: string;
+  getCurrentAgentId: () => string;
   attachmentDraft: NewSessionAttachmentDraft;
   canSubmit: boolean;
   context: import("../../app/context.ts").ApplicationContext | undefined;
@@ -249,6 +265,7 @@ export function renderNewSessionDraftComposer(options: {
   return renderNewSessionComposer({
     agent: options.agent,
     agentId: options.agentId,
+    getCurrentAgentId: options.getCurrentAgentId,
     attachments: options.attachmentDraft.attachments,
     canSubmit: options.canSubmit,
     context: options.context,
