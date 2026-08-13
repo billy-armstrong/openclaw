@@ -67,10 +67,8 @@ const INLINE_SAFE_COMMAND_KEYS = new Set([
   "queue",
 ]);
 
-const INLINE_IMMEDIATE_COMMAND_KEYS = new Set(["help", "commands", "whoami", "status"]);
-
 export function executesInlineImmediately(command: SlashCommandDef): boolean {
-  return INLINE_IMMEDIATE_COMMAND_KEYS.has(command.key);
+  return INLINE_SAFE_COMMAND_KEYS.has(command.key);
 }
 
 const REMOTE_SLASH_IDENTIFIER_PATTERN = /^[a-z0-9][a-z0-9_-]*$/u;

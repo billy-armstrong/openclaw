@@ -3575,7 +3575,7 @@ describe("chat slash menu accessibility", () => {
     expect(onSend).not.toHaveBeenCalled();
   });
 
-  it("hides immediate inline commands when the active composer has no command owner", () => {
+  it("hides inline commands when the active composer has no command owner", () => {
     let draft = "";
     const onDraftChange = vi.fn((next: string) => {
       draft = next;
@@ -3586,11 +3586,11 @@ describe("chat slash menu accessibility", () => {
     expect(container.querySelector(".slash-menu")).toBeNull();
 
     inputDraftAtEnd(container, "catalog /verb");
-    expect(container.querySelector(".slash-menu-name")?.textContent?.trim()).toBe("/verbose");
+    expect(container.querySelector(".slash-menu")).toBeNull();
     expect(draft).toBe("catalog /verb");
   });
 
-  it("keeps a selected inline directive argument in the eventual chat turn", () => {
+  it("executes a selected inline command argument separately", () => {
     let draft = "";
     const onDraftChange = vi.fn((next: string) => {
       draft = next;
@@ -3610,13 +3610,13 @@ describe("chat slash menu accessibility", () => {
     expect(fullOption).toBeInstanceOf(HTMLElement);
     fullOption?.click();
 
-    expect(onSlashCommand).not.toHaveBeenCalled();
-    expect(draft).toBe("hello /verbose full ");
+    expect(onSlashCommand).toHaveBeenCalledExactlyOnceWith("/verbose full");
+    expect(draft).toBe("hello ");
     expect(container.querySelector<HTMLTextAreaElement>("textarea")?.value).toBe(draft);
     expect(onSend).not.toHaveBeenCalled();
   });
 
-  it("executes a typed inline command argument and preserves the surrounding draft", () => {
+  it("executes a typed inline command argument separately and preserves surrounding prose", () => {
     let draft = "";
     const onDraftChange = vi.fn((next: string) => {
       draft = next;
@@ -3634,10 +3634,10 @@ describe("chat slash menu accessibility", () => {
     inputDraftAtEnd(container, "hello /think high");
     keydownComposer(container, "Enter");
 
-    expect(onSlashCommand).not.toHaveBeenCalled();
-    expect(draft).toBe("hello /think high");
+    expect(onSlashCommand).toHaveBeenCalledExactlyOnceWith("/think high");
+    expect(draft).toBe("hello ");
     expect(container.querySelector<HTMLTextAreaElement>("textarea")?.value).toBe(draft);
-    expect(onSend).toHaveBeenCalledOnce();
+    expect(onSend).not.toHaveBeenCalled();
   });
 
   it.each([
@@ -3661,10 +3661,10 @@ describe("chat slash menu accessibility", () => {
       inputDraftAtEnd(container, `hello /${command} ${argument}`);
       keydownComposer(container, "Enter");
 
-      expect(onSlashCommand).not.toHaveBeenCalled();
-      expect(draft).toBe(`hello /${command} ${argument}`);
+      expect(onSlashCommand).toHaveBeenCalledExactlyOnceWith(`/${command} ${argument}`);
+      expect(draft).toBe("hello ");
       expect(container.querySelector<HTMLTextAreaElement>("textarea")?.value).toBe(draft);
-      expect(onSend).toHaveBeenCalledOnce();
+      expect(onSend).not.toHaveBeenCalled();
     },
   );
 
@@ -3699,12 +3699,12 @@ describe("chat slash menu accessibility", () => {
     inputDraftAtEnd(container, "hello /think high");
     keydownComposer(container, "Enter");
 
-    expect(onSlashCommand).not.toHaveBeenCalled();
-    expect(draft).toBe("hello /think high");
-    expect(onSend).toHaveBeenCalledOnce();
+    expect(onSlashCommand).toHaveBeenCalledExactlyOnceWith("/think high");
+    expect(draft).toBe("hello ");
+    expect(onSend).not.toHaveBeenCalled();
   });
 
-  it("keeps a typed inline directive and trailing prose in the eventual chat turn", () => {
+  it("executes a typed inline command and preserves trailing prose", () => {
     let draft = "";
     const onDraftChange = vi.fn((next: string) => {
       draft = next;
@@ -3728,8 +3728,8 @@ describe("chat slash menu accessibility", () => {
     textarea.dispatchEvent(new InputEvent("input", { bubbles: true, inputType: "insertText" }));
     keydownComposer(container, "Enter");
 
-    expect(onSlashCommand).not.toHaveBeenCalled();
-    expect(draft).toBe(withArgument);
+    expect(onSlashCommand).toHaveBeenCalledExactlyOnceWith("/think high");
+    expect(draft).toBe("before after");
     expect(textarea.value).toBe(draft);
   });
 
