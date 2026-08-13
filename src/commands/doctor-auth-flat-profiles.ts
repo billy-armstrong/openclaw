@@ -7,7 +7,6 @@ import { collectConfiguredModelRefs } from "@openclaw/model-catalog-core/configu
 import { isRecord } from "@openclaw/normalization-core/record-coerce";
 import { readNonBlankString as readNonEmptyString } from "@openclaw/normalization-core/string-coerce";
 import { note } from "../../packages/terminal-core/src/note.js";
-import { listAgentIds, resolveAgentDir } from "../agents/agent-scope.js";
 import { AUTH_STORE_VERSION } from "../agents/auth-profiles/constants.js";
 import {
   clearAuthProfileMigrationDiagnostics,
@@ -45,7 +44,6 @@ import type {
 import { resolveLegacyInheritedAuthDir } from "../agents/legacy-inherited-auth-dir.js";
 import { splitTrailingAuthProfile } from "../agents/model-ref-profile.js";
 import { formatCliCommand } from "../cli/command-format.js";
-import { resolveStateDir } from "../config/paths.js";
 import type { AuthProfileConfig } from "../config/types.auth.js";
 import type { OpenClawConfig } from "../config/types.openclaw.js";
 import { coerceSecretRef } from "../config/types.secrets.js";
@@ -54,9 +52,11 @@ import { readLegacyMigrationReceipt } from "../infra/state-migrations.receipts.j
 import type { OpenClawAgentDatabase } from "../state/openclaw-agent-db.js";
 import { shortenHomePath } from "../utils.js";
 import {
+  listAuthProfileRepairCandidates,
   resolveLegacyAuthProfilesPath as resolveAuthStorePath,
   resolveLegacyAuthStatePath as resolveAuthStatePath,
   resolveLegacyFlatAuthPath as resolveLegacyAuthStorePath,
+  type AuthProfileRepairCandidate,
 } from "./doctor-auth-legacy-paths.js";
 import {
   acquireAuthProfileMigrationSourceLocks,
@@ -69,11 +69,6 @@ import {
   type AuthProfileMigrationSourceReceipt,
 } from "./doctor-auth-migration-receipts.js";
 import type { DoctorPrompter } from "./doctor-prompter.js";
-
-type AuthProfileRepairCandidate = {
-  agentDir?: string;
-  authPath: string;
-};
 
 type AuthProfileSqliteMigrationCandidate = AuthProfileRepairCandidate & {
   statePath: string;
@@ -276,54 +271,6 @@ function coerceLegacyFlatAuthProfileStore(raw: unknown): AuthProfileStore | null
     store.profiles[`${providerId}:default`] = credential;
   }
   return Object.keys(store.profiles).length > 0 ? store : null;
-}
-
-function addCandidate(
-  candidates: Map<string, AuthProfileRepairCandidate>,
-  agentDir: string | undefined,
-): void {
-  const authPath = resolveAuthStorePath(agentDir);
-  candidates.set(path.resolve(authPath), { agentDir, authPath });
-}
-
-function listExistingAgentDirsFromState(env: NodeJS.ProcessEnv): string[] {
-  const root = path.join(resolveStateDir(env), "agents");
-  let entries: fs.Dirent[];
-  try {
-    entries = fs.readdirSync(root, { withFileTypes: true });
-  } catch {
-    return [];
-  }
-  return entries
-    .filter((entry) => entry.isDirectory())
-    .map((entry) => path.join(root, entry.name, "agent"))
-    .filter((agentDir) => {
-      try {
-        return fs.statSync(agentDir).isDirectory();
-      } catch {
-        return false;
-      }
-    });
-}
-
-function listAuthProfileRepairCandidates(
-  cfg: OpenClawConfig,
-  env: NodeJS.ProcessEnv,
-): AuthProfileRepairCandidate[] {
-  const candidates = new Map<string, AuthProfileRepairCandidate>();
-  addCandidate(candidates, resolveLegacyInheritedAuthDir(cfg, env));
-  const envAgentDir =
-    readNonEmptyString(env.OPENCLAW_AGENT_DIR) ?? readNonEmptyString(env.PI_CODING_AGENT_DIR);
-  if (envAgentDir) {
-    addCandidate(candidates, envAgentDir);
-  }
-  for (const agentId of listAgentIds(cfg)) {
-    addCandidate(candidates, resolveAgentDir(cfg, agentId, env));
-  }
-  for (const agentDir of listExistingAgentDirsFromState(env)) {
-    addCandidate(candidates, agentDir);
-  }
-  return [...candidates.values()];
 }
 
 function listAuthProfileSqliteMigrationCandidates(
