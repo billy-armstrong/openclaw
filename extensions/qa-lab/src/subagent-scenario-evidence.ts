@@ -116,6 +116,33 @@ function readTasks(tasksPayload: unknown): SubagentTaskEvidence[] {
   });
 }
 
+function readMatchingTasks(
+  tasksPayload: unknown,
+  requesterSessionKey: string,
+  child: OwnedSubagentChild,
+): SubagentTaskEvidence[] {
+  return readTasks(tasksPayload).filter(
+    (task) =>
+      task.requesterSessionKey === requesterSessionKey &&
+      task.childSessionKey === child.sessionKey &&
+      task.label === child.label,
+  );
+}
+
+function readCompletedOwnedTask(
+  tasksPayload: unknown,
+  requesterSessionKey: string,
+  child: OwnedSubagentChild,
+): SubagentTaskEvidence | undefined {
+  const matchingTasks = readMatchingTasks(tasksPayload, requesterSessionKey, child);
+  const [task] = matchingTasks;
+  return matchingTasks.length === 1 &&
+    task?.status === "succeeded" &&
+    task.deliveryStatus === "delivered"
+    ? task
+    : undefined;
+}
+
 function parseHandoffSections(value: unknown) {
   const text = normalizeOptionalString(value) ?? "";
   const matches = Array.from(
@@ -158,17 +185,8 @@ export function evaluateSubagentHandoffEvidence(params: HandoffInputs) {
   if (children.length !== 1 || !child) {
     return undefined;
   }
-  const matchingTasks = readTasks(params.tasksPayload).filter(
-    (task) =>
-      task.requesterSessionKey === params.requesterSessionKey &&
-      task.childSessionKey === child.sessionKey &&
-      task.label === params.expectedChildLabel,
-  );
-  const [task] = matchingTasks;
-  if (matchingTasks.length !== 1 || !task) {
-    return undefined;
-  }
-  if (task.status !== "succeeded" || task.deliveryStatus !== "delivered") {
+  const task = readCompletedOwnedTask(params.tasksPayload, params.requesterSessionKey, child);
+  if (!task) {
     return undefined;
   }
   const normalizedChildResult = normalizeChildResult(params.childFinalText);
@@ -197,6 +215,7 @@ export function evaluateForkedSubagentEvidence(params: {
   expectedChildLabel: string;
   contextNeedle: string;
   sessionStore: unknown;
+  tasksPayload: unknown;
   childTranscripts: unknown;
 }) {
   const children = readOwnedChildren(
@@ -208,13 +227,17 @@ export function evaluateForkedSubagentEvidence(params: {
   if (children.length !== 1 || !child || !Array.isArray(params.childTranscripts)) {
     return undefined;
   }
+  const task = readCompletedOwnedTask(params.tasksPayload, params.requesterSessionKey, child);
+  if (!task) {
+    return undefined;
+  }
   const transcript = params.childTranscripts.find(
     (candidate) => isRecord(candidate) && candidate.sessionKey === child.sessionKey,
   );
   const finalText = isRecord(transcript)
     ? (normalizeOptionalString(transcript.finalText) ?? "")
     : "";
-  return finalText.includes(params.contextNeedle) ? { child } : undefined;
+  return finalText.includes(params.contextNeedle) ? { child, task } : undefined;
 }
 
 function summarizeMockRequest(request: unknown, expectedChildLabel: string) {
@@ -271,14 +294,8 @@ export function summarizeSubagentHandoffFailure(
     params.expectedChildLabel,
   );
   const child = ownedChildren.length === 1 ? ownedChildren[0] : undefined;
-  const tasks = readTasks(params.tasksPayload);
   const matchingTasks = child
-    ? tasks.filter(
-        (task) =>
-          task.requesterSessionKey === params.requesterSessionKey &&
-          task.childSessionKey === child.sessionKey &&
-          task.label === params.expectedChildLabel,
-      )
+    ? readMatchingTasks(params.tasksPayload, params.requesterSessionKey, child)
     : [];
   const { sections, shape } = parseHandoffSections(params.parentFinalText);
   const normalizedChildResult = normalizeChildResult(params.childFinalText);
@@ -307,6 +324,7 @@ export function summarizeForkedSubagentFailure(params: {
   expectedChildLabel: string;
   contextNeedle: string;
   sessionStore: unknown;
+  tasksPayload: unknown;
   childTranscripts: unknown;
 }) {
   const ownedChildren = readOwnedChildren(
@@ -324,5 +342,16 @@ export function summarizeForkedSubagentFailure(params: {
           (normalizeOptionalString(candidate.finalText) ?? "").includes(params.contextNeedle),
       )
     : false;
-  return { ownedChildCount: ownedChildren.length, transcriptCount, transcriptContainsNeedle };
+  const child = ownedChildren.length === 1 ? ownedChildren[0] : undefined;
+  const matchingTasks = child
+    ? readMatchingTasks(params.tasksPayload, params.requesterSessionKey, child)
+    : [];
+  return {
+    ownedChildCount: ownedChildren.length,
+    matchingTaskCount: matchingTasks.length,
+    taskSucceeded: matchingTasks.length === 1 && matchingTasks[0]?.status === "succeeded",
+    taskDelivered: matchingTasks.length === 1 && matchingTasks[0]?.deliveryStatus === "delivered",
+    transcriptCount,
+    transcriptContainsNeedle,
+  };
 }

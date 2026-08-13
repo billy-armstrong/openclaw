@@ -39,6 +39,33 @@ function validInputs() {
   };
 }
 
+function validForkInputs() {
+  return {
+    requesterSessionKey: "agent:qa:fork:current",
+    expectedChildLabel: "qa-fork-context",
+    contextNeedle: "FORKED-CONTEXT-ALPHA",
+    sessionStore: {
+      "agent:qa:fork-child": {
+        spawnedBy: "agent:qa:fork:current",
+        label: "qa-fork-context",
+      },
+    },
+    tasksPayload: {
+      tasks: [
+        {
+          taskId: "task-fork-current",
+          requesterSessionKey: "agent:qa:fork:current",
+          childSessionKey: "agent:qa:fork-child",
+          label: "qa-fork-context",
+          status: "succeeded",
+          deliveryStatus: "delivered",
+        },
+      ],
+    },
+    childTranscripts: [{ sessionKey: "agent:qa:fork-child", finalText: "FORKED-CONTEXT-ALPHA" }],
+  };
+}
+
 describe("subagent scenario evidence", () => {
   it("accepts one owned child, matching delivered task, and attributed child result", () => {
     expect(evaluateSubagentHandoffEvidence(validInputs())).toMatchObject({
@@ -105,21 +132,11 @@ describe("subagent scenario evidence", () => {
   });
 
   it("accepts only the owned fork child transcript containing the fork needle", () => {
-    const params = {
-      requesterSessionKey: "agent:qa:fork:current",
-      expectedChildLabel: "qa-fork-context",
-      contextNeedle: "FORKED-CONTEXT-ALPHA",
-      sessionStore: {
-        "agent:qa:fork-child": {
-          spawnedBy: "agent:qa:fork:current",
-          label: "qa-fork-context",
-        },
-      },
-      childTranscripts: [{ sessionKey: "agent:qa:fork-child", finalText: "FORKED-CONTEXT-ALPHA" }],
-    };
+    const params = validForkInputs();
 
     expect(evaluateForkedSubagentEvidence(params)).toMatchObject({
       child: { sessionKey: "agent:qa:fork-child" },
+      task: { taskId: "task-fork-current", status: "succeeded", deliveryStatus: "delivered" },
     });
     expect(
       evaluateForkedSubagentEvidence({
@@ -129,6 +146,24 @@ describe("subagent scenario evidence", () => {
         },
       }),
     ).toBeUndefined();
+  });
+
+  it.each([
+    ["no matching task", { tasks: [] }],
+    [
+      "a pending task",
+      { tasks: [{ ...validForkInputs().tasksPayload.tasks[0], status: "running" }] },
+    ],
+    [
+      "a failed task",
+      { tasks: [{ ...validForkInputs().tasksPayload.tasks[0], status: "failed" }] },
+    ],
+    [
+      "an undelivered task",
+      { tasks: [{ ...validForkInputs().tasksPayload.tasks[0], deliveryStatus: "pending" }] },
+    ],
+  ])("rejects fork evidence with %s", (_name, tasksPayload) => {
+    expect(evaluateForkedSubagentEvidence({ ...validForkInputs(), tasksPayload })).toBeUndefined();
   });
 
   it("bounds failure diagnostics and never returns transcript text", () => {

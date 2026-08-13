@@ -68,18 +68,16 @@ async function runCausallyOwnedSubagentReply(scenarioId: (typeof scenarioIds)[nu
         finalText: sessionKey === childSessionKey ? childFinalText : parentFinalText,
       }),
       runQaCli: async () => ({
-        tasks: handoff
-          ? [
-              {
-                taskId: "task-current",
-                requesterSessionKey,
-                childSessionKey,
-                label,
-                status: "succeeded",
-                deliveryStatus: "delivered",
-              },
-            ]
-          : [],
+        tasks: [
+          {
+            taskId: "task-current",
+            requesterSessionKey,
+            childSessionKey,
+            label,
+            status: "succeeded",
+            deliveryStatus: "delivered",
+          },
+        ],
       }),
       normalizeLowercaseStringOrEmpty,
     },
