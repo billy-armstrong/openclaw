@@ -31,7 +31,7 @@ import {
   exportMarkdown,
   getActiveSlashMenuOptionId,
   getActiveSlashMenuOptionLabel,
-  handleInlineSlashArgumentKeyDown,
+  handleInlineSlashArgKeyDown,
   isSlashMenuVisible,
   paneDomId,
   resetSlashMenuState,
@@ -314,7 +314,6 @@ export function renderChatComposer(props: ChatComposerProps) {
     if (state.composerComposing || event.isComposing || event.keyCode === 229) {
       return;
     }
-
     if (props.connected && state.skillMenuOpen) {
       if (
         handleComposerMenuKeyDown(
@@ -332,10 +331,9 @@ export function renderChatComposer(props: ChatComposerProps) {
       }
     }
 
-    if (props.connected && handleInlineSlashArgumentKeyDown(event, props, requestUpdate)) {
+    if (props.connected && handleInlineSlashArgKeyDown(event, props, requestUpdate, sendShortcut)) {
       return;
     }
-
     if (
       props.connected &&
       state.slashMenuOpen &&

@@ -468,10 +468,11 @@ function beginDirectInlineSlashArgument(
   return true;
 }
 
-export function handleInlineSlashArgumentKeyDown(
+export function handleInlineSlashArgKeyDown(
   event: KeyboardEvent,
   props: ChatComposerProps,
   requestUpdate: () => void,
+  sendShortcut: ChatComposerProps["sendShortcut"],
 ): boolean {
   const state = getChatComposerState(props.paneId);
   if (event.key === "Escape") {
@@ -483,7 +484,8 @@ export function handleInlineSlashArgumentKeyDown(
     requestUpdate();
     return true;
   }
-  if (event.key !== "Enter") {
+  const sendShortcutMatches = sendShortcut === "enter" || event.metaKey || event.ctrlKey;
+  if (event.key !== "Enter" || event.shiftKey || !sendShortcutMatches) {
     return false;
   }
   if (

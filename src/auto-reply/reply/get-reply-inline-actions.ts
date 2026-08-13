@@ -386,6 +386,7 @@ export async function handleInlineActions(params: {
       skillCommands,
     });
   }
+  const isInlineSkillInvocation = skillInvocation !== null && "inline" in skillInvocation;
   if (skillInvocation) {
     if (!command.isAuthorizedSender) {
       logVerbose(
@@ -519,7 +520,7 @@ export async function handleInlineActions(params: {
   };
 
   const inlineCommand =
-    allowTextCommands && command.isAuthorizedSender
+    allowTextCommands && command.isAuthorizedSender && !isInlineSkillInvocation
       ? extractInlineSimpleCommand(cleanedBody)
       : null;
   if (inlineCommand) {
@@ -554,6 +555,7 @@ export async function handleInlineActions(params: {
   }
 
   const handleInlineStatus =
+    !isInlineSkillInvocation &&
     !isDirectiveOnly({
       directives,
       cleanedBody: directives.cleaned,
@@ -561,7 +563,8 @@ export async function handleInlineActions(params: {
       cfg,
       agentId,
       isGroup,
-    }) && inlineStatusRequested;
+    }) &&
+    inlineStatusRequested;
   let didSendInlineStatus = false;
   if (handleInlineStatus) {
     const { buildStatusReply } = await loadCommandsRuntime();
@@ -654,7 +657,7 @@ export async function handleInlineActions(params: {
     }
   }
 
-  if (directiveAck) {
+  if (directiveAck && !isInlineSkillInvocation) {
     await sendInlineReply(directiveAck);
   }
 
@@ -665,9 +668,10 @@ export async function handleInlineActions(params: {
 
   const shouldRunCommandHandlers =
     inlineCommand !== null ||
-    directiveAck !== undefined ||
-    inlineStatusRequested ||
-    command.commandBodyNormalized.trim().startsWith("/");
+    (!isInlineSkillInvocation &&
+      (directiveAck !== undefined ||
+        inlineStatusRequested ||
+        command.commandBodyNormalized.trim().startsWith("/")));
   if (!shouldRunCommandHandlers) {
     return {
       kind: "continue",
