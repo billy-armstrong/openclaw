@@ -150,20 +150,12 @@ function applyChatMetadataResult(
   client: GatewayBrowserClient,
   agentId: string | null | undefined,
   result: ChatMetadataResult,
-  fields: { commands?: boolean; models?: boolean } = {},
 ): ChatMetadataApplyResult {
-  const models = fields.models === false ? undefined : applyModelCatalogResult(result.models);
+  const models = applyModelCatalogResult(result.models);
   if (models) {
     host.chatModelCatalog = models;
   }
-  const commandsApplied =
-    fields.commands === false
-      ? false
-      : applyRemoteSlashCommandsResult({
-          client,
-          agentId,
-          result,
-        });
+  const commandsApplied = applyRemoteSlashCommandsResult({ client, agentId, result });
   return { commands: commandsApplied, models: Boolean(models) };
 }
 
@@ -445,12 +437,18 @@ export function refreshPageChat(host: ChatPageHost, opts?: ChatRefreshOptions) {
           return;
         }
         rememberChatMetadata(client, agentId, metadata);
-        // Startup metadata stays on the published static catalog so opening chat never waits on
-        // provider discovery. The explicit models.list read below owns the live picker inventory.
-        const applied = applyChatMetadataResult(host, client, agentId, metadata, { models: false });
-        if (!applied.models || !applied.commands) {
-          await refreshMissingChatMetadata(request, applied, { refreshModelCatalog: true });
+        // Render the published snapshot immediately. Live discovery can refine availability, but
+        // it must not keep the picker blocked on provider latency.
+        const applied = applyChatMetadataResult(host, client, agentId, metadata);
+        if (applied.models) {
+          host.chatModelsLoading = false;
+          host.requestUpdate?.();
         }
+        await refreshMissingChatMetadata(
+          request,
+          { ...applied, models: false },
+          { refreshModelCatalog: true },
+        );
       } finally {
         if (ownsChatMetadataRequest(request)) {
           host.chatModelsLoading = false;

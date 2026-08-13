@@ -363,25 +363,19 @@ describe("refreshChat", () => {
     expect(requestUpdate).not.toHaveBeenCalled();
   });
 
-  it("uses explicit model discovery after startup metadata", async () => {
+  it("renders startup models while explicit model discovery continues", async () => {
     const startup = createDeferred<unknown>();
+    const liveModels = createDeferred<unknown>();
+    const requestUpdate = vi.fn();
     const host = makeChatHost({
       hello: {
         features: { methods: ["chat.metadata", "chat.startup"] },
       } as TestChatHost["hello"],
       requestHandlers: {
         "chat.startup": () => startup.promise,
-        "models.list": {
-          models: [
-            {
-              available: true,
-              id: "live-model",
-              name: "Live Model",
-              provider: "openai",
-            },
-          ],
-        },
+        "models.list": () => liveModels.promise,
       },
+      requestUpdate,
     });
 
     const refresh = refreshPageChat(asChatPageHost(host), {
@@ -412,15 +406,38 @@ describe("refreshChat", () => {
       expect(host.chatModelCatalog).toEqual([
         {
           available: true,
+          id: "startup-model",
+          name: "Startup Model",
+          provider: "openai",
+        },
+      ]),
+    );
+    expect(asChatPageHost(host).chatModelsLoading).toBe(false);
+    expect(requestUpdate).toHaveBeenCalled();
+    expect(host.request).not.toHaveBeenCalledWith("chat.metadata", expect.anything());
+    expect(host.request).toHaveBeenCalledWith("models.list", { view: "configured" });
+    expect(host.request).not.toHaveBeenCalledWith("commands.list", expect.anything());
+
+    liveModels.resolve({
+      models: [
+        {
+          available: true,
+          id: "live-model",
+          name: "Live Model",
+          provider: "openai",
+        },
+      ],
+    });
+    await waitForFast(() =>
+      expect(host.chatModelCatalog).toEqual([
+        {
+          available: true,
           id: "live-model",
           name: "Live Model",
           provider: "openai",
         },
       ]),
     );
-    expect(host.request).not.toHaveBeenCalledWith("chat.metadata", expect.anything());
-    expect(host.request).toHaveBeenCalledWith("models.list", { view: "configured" });
-    expect(host.request).not.toHaveBeenCalledWith("commands.list", expect.anything());
   });
 
   it("fills omitted startup metadata immediately and populates models and commands", async () => {
