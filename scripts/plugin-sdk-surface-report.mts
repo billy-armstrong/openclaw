@@ -272,7 +272,8 @@ export function readPluginSdkSurfaceBudgets(env: NodeJS.ProcessEnv = process.env
       // +1: normalized Gateway public origin resolver for plugin-generated links.
       // -2: retire the dead progress-draft render reader; it counted twice via
       // channel-outbound and channel-message's wildcard re-export of it.
-      4306,
+      // +1: opaque channel participant evidence preservation without mint authority.
+      4307,
       env,
     ),
     publicFunctionExports: readPluginSdkSurfaceBudgetEnv(
@@ -341,7 +342,8 @@ export function readPluginSdkSurfaceBudgets(env: NodeJS.ProcessEnv = process.env
       // +1: normalized Gateway public origin resolver for plugin-generated links.
       // -2: retire the dead progress-draft render reader; it counted twice via
       // channel-outbound and channel-message's wildcard re-export of it.
-      2570,
+      // +1: opaque channel participant evidence preservation without mint authority.
+      2571,
       env,
     ),
     publicDeprecatedExports: readPluginSdkSurfaceBudgetEnv(
