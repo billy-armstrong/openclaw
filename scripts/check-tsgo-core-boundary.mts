@@ -86,7 +86,8 @@ const canonicalRoots = (readGraphConfig(canonicalCoreTestConfig).files ?? [])
   .map(normalizeFilePath)
   .filter((file) => testRootPattern.test(file));
 const shardConfigs = TSGO_CORE_TEST_SHARDS.map((shard) => ({
-  ...shard,
+  name: shard.name,
+  config: shard.config,
   expanded: readGraphConfig(shard.config),
 }));
 const shardViolations = findTsgoCoreTestShardViolations({
