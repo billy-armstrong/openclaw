@@ -5,7 +5,7 @@ import {
   runSetupWizardConfigure,
 } from "openclaw/plugin-sdk/plugin-test-runtime";
 import type { WizardPrompter } from "openclaw/plugin-sdk/plugin-test-runtime";
-import { afterEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { OpenClawConfig } from "../runtime-api.js";
 import { nostrPlugin } from "./channel.js";
 import { normalizePubkey } from "./nostr-key-utils.js";
@@ -113,6 +113,10 @@ const nostrTestPlugin = {
 };
 
 const nostrConfigure = createPluginSetupWizardConfigure(nostrTestPlugin);
+
+beforeEach(() => {
+  vi.stubEnv("NOSTR_PRIVATE_KEY", undefined);
+});
 
 function requireNostrLooksLikeId() {
   const looksLikeId = nostrTestPlugin.messaging?.targetResolver?.looksLikeId;
