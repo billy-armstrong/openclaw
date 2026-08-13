@@ -57,6 +57,33 @@ function createLogger() {
   };
 }
 
+function createConnectFrame(role: "operator" | "node" | "worker"): Buffer {
+  const params =
+    role === "worker"
+      ? { role }
+      : {
+          minProtocol: PROTOCOL_VERSION,
+          maxProtocol: PROTOCOL_VERSION,
+          client: {
+            id: "gateway-client",
+            version: "dev",
+            platform: "test",
+            mode: "backend",
+          },
+          role,
+          scopes: [],
+          caps: [],
+        };
+  return Buffer.from(
+    JSON.stringify({
+      type: "req",
+      id: role === "operator" ? "connect-1" : role === "node" ? "node-connect-1" : "worker-connect",
+      method: "connect",
+      params,
+    }),
+  );
+}
+
 function attachHarness(params: { deferSocketSend?: boolean } = {}) {
   let onMessage: ((data: WebSocket.RawData) => void) | undefined;
   let finishSocketSend: (() => void) | undefined;
@@ -129,63 +156,9 @@ function attachHarness(params: { deferSocketSend?: boolean } = {}) {
     get client() {
       return client;
     },
-    sendConnect: () =>
-      onMessage?.(
-        Buffer.from(
-          JSON.stringify({
-            type: "req",
-            id: "connect-1",
-            method: "connect",
-            params: {
-              minProtocol: PROTOCOL_VERSION,
-              maxProtocol: PROTOCOL_VERSION,
-              client: {
-                id: "gateway-client",
-                version: "dev",
-                platform: "test",
-                mode: "backend",
-              },
-              role: "operator",
-              scopes: [],
-              caps: [],
-            },
-          }),
-        ),
-      ),
-    sendNodeConnect: () =>
-      onMessage?.(
-        Buffer.from(
-          JSON.stringify({
-            type: "req",
-            id: "node-connect-1",
-            method: "connect",
-            params: {
-              minProtocol: PROTOCOL_VERSION,
-              maxProtocol: PROTOCOL_VERSION,
-              client: {
-                id: "gateway-client",
-                version: "dev",
-                platform: "test",
-                mode: "backend",
-              },
-              role: "node",
-              scopes: [],
-              caps: [],
-            },
-          }),
-        ),
-      ),
-    sendWorkerConnect: () =>
-      onMessage?.(
-        Buffer.from(
-          JSON.stringify({
-            type: "req",
-            id: "worker-connect",
-            method: "connect",
-            params: { role: "worker" },
-          }),
-        ),
-      ),
+    sendConnect: () => onMessage?.(createConnectFrame("operator")),
+    sendNodeConnect: () => onMessage?.(createConnectFrame("node")),
+    sendWorkerConnect: () => onMessage?.(createConnectFrame("worker")),
     send,
     setCloseCause,
     setClient,

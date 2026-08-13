@@ -14,6 +14,7 @@ import {
   GATEWAY_STARTUP_UNAVAILABLE_REASON,
 } from "../../../packages/gateway-protocol/src/startup-unavailable.js";
 import { createDeferred } from "../../../test/helpers/promise.js";
+import { MAX_QUEUED_GATEWAY_PREAUTH_FRAMES } from "../server-constants.js";
 import { attachGatewayWsConnectionHandler } from "./ws-connection.js";
 import {
   attachGatewayWsForTest,
@@ -21,7 +22,6 @@ import {
   createGatewayWsTestRequestContext,
   createGatewayWsTestSocket,
 } from "./ws-connection.test-helpers.js";
-import { MAX_QUEUED_GATEWAY_PREAUTH_FRAMES } from "./ws-connection/preauth-ingress.js";
 
 describe("attachGatewayWsConnectionHandler startup readiness", () => {
   it("applies the shared preauth queue limit while the message handler loads", async () => {
