@@ -1608,8 +1608,8 @@ importers:
         specifier: 1.30.0
         version: 1.30.0(supports-color@10.2.2)(zod@4.4.3)
       '@openclaw/crabline':
-        specifier: 0.1.13
-        version: 0.1.13
+        specifier: 0.1.15
+        version: 0.1.15
       p-limit:
         specifier: 7.3.1
         version: 7.3.1
@@ -4093,8 +4093,8 @@ packages:
     cpu: [x64]
     os: [win32]
 
-  '@openclaw/crabline@0.1.13':
-    resolution: {integrity: sha512-BfoppEVLAxMDdiTHujAmJlVW/mzqPI5P5FVYAN0Wa334ZadpJULUUKpn3gIfcFIMZnNm97G/hxDW/2QqK1k1kA==}
+  '@openclaw/crabline@0.1.15':
+    resolution: {integrity: sha512-3MdLWb08j0nDyV13xmD3Nop8NrHQb1waHYkbDaKl8k012y4dhIVmQhcypp/hVE85m5ISiAw0J+k8th4/Rbt1Gg==}
     engines: {node: '>=22'}
     hasBin: true
 
@@ -8300,10 +8300,6 @@ packages:
   qoa-format@1.0.1:
     resolution: {integrity: sha512-dMB0Z6XQjdpz/Cw4Rf6RiBpQvUSPCfYlQMWvmuWlWkAT7nDQD29cVZ1SwDUB6DYJSitHENwbt90lqfI+7bvMcw==}
 
-  qrcode-terminal@0.12.0:
-    resolution: {integrity: sha512-EXtzRZmC+YGmGlDFbXKxQiMZNwCLEO6BANKXG4iCtSIM0yqc/pappSx3RIKr4r0uh5JsBckOXeKrB3Iz7mdQpQ==}
-    hasBin: true
-
   qrcode@1.5.4:
     resolution: {integrity: sha512-1ca71Zgiu6ORjHqFBDpnSMTR2ReToX4l1Au1VFLyVeBTFavzQnv5JxMFr3ukHVKpSrSA2MCk0lNJSykjUfz7Zg==}
     engines: {node: '>=10.13.0'}
@@ -8591,10 +8587,6 @@ packages:
   sigstore@5.0.0:
     resolution: {integrity: sha512-hJqJfoG/e4qFQaauQL00c6J6FrHLBGKtkFvW3JbTSIEFOhLrSjdSM/gWd/yUOfYo/gsERehTXGC1VZWX+9X4Dg==}
     engines: {node: ^22.22.2 || ^24.15.0 || >=26.0.0}
-
-  silk-wasm@3.7.1:
-    resolution: {integrity: sha512-mXPwLRtZxrYV3TZx41jMAeKc80wvmyrcXIcs8HctFxK15Ahz2OJQENYhNgEPeCEOdI6Mbx1NxQsqxzwc3DKerw==}
-    engines: {node: '>=16.11.0'}
 
   simple-git@3.36.0:
     resolution: {integrity: sha512-cGQjLjK8bxJw4QuYT7gxHw3/IouVESbhahSsHrX97MzCL1gu2u7oy38W6L2ZIGECEfIBG4BabsWDPjBxJENv9Q==}
@@ -11370,7 +11362,7 @@ snapshots:
   '@openai/codex@0.147.0-win32-x64':
     optional: true
 
-  '@openclaw/crabline@0.1.13':
+  '@openclaw/crabline@0.1.15':
     dependencies:
       '@types/node': 22.20.1
       commander: 15.0.0
@@ -15809,8 +15801,6 @@ snapshots:
     dependencies:
       '@thi.ng/bitstream': 2.4.54
 
-  qrcode-terminal@0.12.0: {}
-
   qrcode@1.5.4:
     dependencies:
       dijkstrajs: 1.0.3
@@ -16206,8 +16196,6 @@ snapshots:
     transitivePeerDependencies:
       - kerberos
       - supports-color
-
-  silk-wasm@3.7.1: {}
 
   simple-git@3.36.0(supports-color@10.2.2):
     dependencies:
