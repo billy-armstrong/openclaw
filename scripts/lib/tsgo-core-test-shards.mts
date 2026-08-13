@@ -56,7 +56,7 @@ export const TSGO_TARGETED_TEST_SHARED_SHARDS = [
   {
     name: "extension-declarations",
     config: "test/tsconfig/tsconfig.test.extension-declarations.json",
-    sparseRoots: ["extensions"],
+    sparseRoots: ["extensions", "src", "ui/src"],
   },
 ] as const;
 

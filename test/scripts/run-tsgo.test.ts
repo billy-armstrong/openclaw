@@ -110,7 +110,7 @@ describe("run-tsgo sparse guard", () => {
     `);
   });
 
-  it("requires extensions for the targeted declaration shard", () => {
+  it("rejects declaration-shard sparse worktrees missing inherited roots", () => {
     const cwd = createTempDir("openclaw-run-tsgo-");
 
     expect(
@@ -118,11 +118,12 @@ describe("run-tsgo sparse guard", () => {
         cwd,
         fileExists: () => true,
         isSparseCheckoutEnabled: () => true,
-        sparseCheckoutPatterns: ["/packages/"],
+        sparseCheckoutPatterns: ["/extensions/"],
       }),
     ).toMatchInlineSnapshot(`
       "tsconfig.test.extension-declarations.json cannot be typechecked from this sparse checkout because tracked project inputs are missing or only partially included:
-      - extensions
+      - src
+      - ui/src
       Expand this worktree's sparse checkout to include those paths, or rerun in a full worktree."
     `);
   });
