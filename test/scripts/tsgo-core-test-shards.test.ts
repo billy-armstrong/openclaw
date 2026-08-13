@@ -1,5 +1,9 @@
+import fs from "node:fs";
 import { describe, expect, it } from "vitest";
-import { findTsgoCoreTestShardViolations } from "../../scripts/lib/tsgo-core-test-shards.mts";
+import {
+  findTsgoCoreTestShardViolations,
+  selectTsgoCoreTestShards,
+} from "../../scripts/lib/tsgo-core-test-shards.mts";
 
 describe("tsgo core test shards", () => {
   it("accepts an exact once-only partition within the root budget", () => {
@@ -32,5 +36,34 @@ describe("tsgo core test shards", () => {
       "unassigned: src/missing.test.ts",
       "not in the canonical core-test graph (second): src/extra.test.ts",
     ]);
+  });
+
+  it.each(["src", "ui", "packages"])(
+    "retains shared extension declarations for the %s alias",
+    (group) => {
+      const shards = selectTsgoCoreTestShards(group);
+
+      expect(shards?.at(-1)).toEqual({
+        name: "extension-declarations",
+        config: "test/tsconfig/tsconfig.test.extension-declarations.json",
+      });
+    },
+  );
+
+  it("keeps the full core-test run scoped to its canonical shards", () => {
+    expect(selectTsgoCoreTestShards()).not.toContainEqual(
+      expect.objectContaining({ name: "extension-declarations" }),
+    );
+  });
+
+  it("routes aggregate package aliases through bounded processes", () => {
+    const packageJson = JSON.parse(fs.readFileSync("package.json", "utf8")) as {
+      scripts: Record<string, string>;
+    };
+
+    expect(packageJson.scripts["tsgo:core:all"]).toContain("pnpm tsgo:core:test");
+    expect(packageJson.scripts["tsgo:core:all"]).not.toContain("run-tsgo.mjs -b");
+    expect(packageJson.scripts["tsgo:all"]).toContain("pnpm tsgo:core:all");
+    expect(packageJson.scripts["tsgo:all"]).not.toContain("run-tsgo.mjs -b");
   });
 });

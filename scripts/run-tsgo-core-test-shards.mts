@@ -10,19 +10,15 @@ import {
 } from "./lib/local-heavy-check-runtime.mts";
 import { signalExitCode } from "./lib/managed-child-process.mts";
 import { resolveRepoRoot } from "./lib/repo-root.mjs";
-import { TSGO_CORE_TEST_SHARDS } from "./lib/tsgo-core-test-shards.mts";
+import { selectTsgoCoreTestShards } from "./lib/tsgo-core-test-shards.mts";
 
 const repoRoot = resolveRepoRoot(import.meta.url);
 const requestedGroup = process.argv[2];
-const groups: ReadonlySet<string> = new Set(TSGO_CORE_TEST_SHARDS.map((shard) => shard.group));
-if (requestedGroup && !groups.has(requestedGroup)) {
+const shards = selectTsgoCoreTestShards(requestedGroup);
+if (!shards) {
   console.error(`Unknown core test shard group: ${requestedGroup}`);
   process.exit(1);
 }
-
-const shards = requestedGroup
-  ? TSGO_CORE_TEST_SHARDS.filter((shard) => shard.group === requestedGroup)
-  : TSGO_CORE_TEST_SHARDS;
 const env = resolveLocalHeavyCheckEnv(process.env);
 const releaseLock =
   env.OPENCLAW_TSGO_HEAVY_CHECK_LOCK_HELD === "1"

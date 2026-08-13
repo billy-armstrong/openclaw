@@ -11,7 +11,16 @@ export const TSGO_CORE_TEST_SHARDS = [
     group: "src",
     config: "test/tsconfig/tsconfig.core.test.agents-other.json",
   },
-  { name: "gateway", group: "src", config: "test/tsconfig/tsconfig.core.test.gateway.json" },
+  {
+    name: "gateway-root",
+    group: "src",
+    config: "test/tsconfig/tsconfig.core.test.gateway-root.json",
+  },
+  {
+    name: "gateway-other",
+    group: "src",
+    config: "test/tsconfig/tsconfig.core.test.gateway-other.json",
+  },
   { name: "infra", group: "src", config: "test/tsconfig/tsconfig.core.test.infra.json" },
   { name: "commands", group: "src", config: "test/tsconfig/tsconfig.core.test.commands.json" },
   {
@@ -41,6 +50,27 @@ export const TSGO_CORE_TEST_SHARDS = [
 ] as const;
 
 export type TsgoCoreTestShard = (typeof TSGO_CORE_TEST_SHARDS)[number];
+
+const TSGO_TARGETED_TEST_SHARED_SHARDS = [
+  {
+    name: "extension-declarations",
+    config: "test/tsconfig/tsconfig.test.extension-declarations.json",
+  },
+] as const;
+
+export function selectTsgoCoreTestShards(
+  requestedGroup?: string,
+): readonly { name: string; config: string }[] | undefined {
+  if (!requestedGroup) {
+    return TSGO_CORE_TEST_SHARDS;
+  }
+  const selected = TSGO_CORE_TEST_SHARDS.filter((shard) => shard.group === requestedGroup);
+  if (selected.length === 0) {
+    return undefined;
+  }
+  // Targeted aliases historically checked extension declarations as shared ambient input.
+  return [...selected, ...TSGO_TARGETED_TEST_SHARED_SHARDS];
+}
 
 export function findTsgoCoreTestShardViolations(params: {
   canonicalRoots: readonly string[];

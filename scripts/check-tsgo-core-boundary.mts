@@ -2,8 +2,6 @@
 
 // Enforces core tsgo project boundaries and sparse-checkout safety.
 import { spawnSync } from "node:child_process";
-import fs from "node:fs";
-import path from "node:path";
 import { resolveRepoToolBinPath } from "./lib/local-heavy-check-runtime.mts";
 import { createManagedCommandInvocation } from "./lib/managed-child-process.mts";
 import { resolveRepoRoot } from "./lib/repo-root.mjs";
@@ -15,7 +13,6 @@ import {
 const repoRoot = resolveRepoRoot(import.meta.url);
 const tsgoPath = resolveRepoToolBinPath("tsgo", { cwd: repoRoot });
 const canonicalCoreTestConfig = "test/tsconfig/tsconfig.core.test.json";
-const coreTestProjectsConfig = "test/tsconfig/tsconfig.core.test.projects.json";
 
 const coreGraphs = [
   { name: "core", config: "tsconfig.core.json" },
@@ -84,24 +81,6 @@ function readGraphConfig(config: string): {
   };
 }
 
-function listProjectLeaves(config: string, seen = new Set<string>()): string[] {
-  const absoluteConfig = path.resolve(repoRoot, config);
-  if (seen.has(absoluteConfig)) {
-    throw new Error(`Project-reference cycle at ${normalizeFilePath(absoluteConfig)}`);
-  }
-  seen.add(absoluteConfig);
-  const parsed = JSON.parse(fs.readFileSync(absoluteConfig, "utf8")) as {
-    references?: { path: string }[];
-  };
-  if (!parsed.references || parsed.references.length === 0) {
-    return [normalizeFilePath(absoluteConfig)];
-  }
-  return parsed.references.flatMap((reference) => {
-    const referencedConfig = path.resolve(path.dirname(absoluteConfig), reference.path);
-    return listProjectLeaves(path.relative(repoRoot, referencedConfig), seen);
-  });
-}
-
 const testRootPattern = /\.test\.(?:ts|tsx)$/u;
 const canonicalRoots = (readGraphConfig(canonicalCoreTestConfig).files ?? [])
   .map(normalizeFilePath)
@@ -119,14 +98,6 @@ const shardViolations = findTsgoCoreTestShardViolations({
       .filter((file) => testRootPattern.test(file)),
   })),
 });
-
-const expectedLeaves = TSGO_CORE_TEST_SHARDS.map((shard) => shard.config).toSorted();
-const actualLeaves = listProjectLeaves(coreTestProjectsConfig).toSorted();
-if (JSON.stringify(actualLeaves) !== JSON.stringify(expectedLeaves)) {
-  shardViolations.push(
-    `${coreTestProjectsConfig} must reference exactly these leaves: ${expectedLeaves.join(", ")}`,
-  );
-}
 
 const buildInfoOwners = new Map<string, string[]>();
 for (const shard of shardConfigs) {

@@ -9,9 +9,6 @@ import { TSGO_CORE_TEST_SHARDS } from "./tsgo-core-test-shards.mts";
 const PACKAGE_TEST_CONFIGS = new Set(["tsconfig.test.packages.json"]);
 const CORE_TEST_CONFIGS = new Set([
   "tsconfig.core.test.json",
-  "tsconfig.core.test.projects.json",
-  "tsconfig.core.test.src.projects.json",
-  "tsconfig.core.test.ui.projects.json",
   ...TSGO_CORE_TEST_SHARDS.map((shard) => path.basename(shard.config)).filter(
     (config) => !PACKAGE_TEST_CONFIGS.has(config),
   ),

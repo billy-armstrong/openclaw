@@ -1,7 +1,0 @@
-{
-  "files": [],
-  "references": [
-    { "path": "./tsconfig.core.test.ui-pages-e2e.json" },
-    { "path": "./tsconfig.core.test.ui-other.json" }
-  ]
-}
