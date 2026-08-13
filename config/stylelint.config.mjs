@@ -6,10 +6,6 @@ export default {
     // Cascade-order advice, not an error class; 400+ intentional hits in the
     // existing token/override cascade make it pure noise here.
     "no-descending-specificity": null,
-    // 17 pre-existing duplicates; merging them reorders the cascade and needs
-    // per-site visual proof. Tighten in a follow-up, keep new code honest via
-    // review until then.
-    "no-duplicate-selectors": null,
     // stylelint 17.14.1 knows display-mode as fullscreen | standalone |
     // minimal-ui | browser | picture-in-picture (lib/reference/mediaFeatures.mjs),
     // predating window-controls-overlay. Allow that one value only, so typos in
@@ -28,6 +24,14 @@ export default {
     {
       files: ["**/*.ts"],
       customSyntax: "postcss-lit",
+    },
+    {
+      files: ["ui/src/components/file-preview-modal.ts"],
+      rules: {
+        // Shortcut-key chrome is intentionally reopened beside the modal footer;
+        // keep every other selector in this Lit stylesheet enforced.
+        "no-duplicate-selectors": [true, { ignoreSelectors: [".kbd"] }],
+      },
     },
   ],
 };
