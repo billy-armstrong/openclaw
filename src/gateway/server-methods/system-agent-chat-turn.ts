@@ -82,6 +82,9 @@ export function buildSystemAgentChatResult(params: {
       : {}),
     ...(params.reply.sensitive === true ? { sensitive: true } : {}),
     ...(params.reply.wizardInputPending === true ? { wizardInputPending: true } : {}),
+    ...(params.reply.wizardActionAccepted === true && params.reply.wizardAction
+      ? { wizardAction: params.reply.wizardAction }
+      : {}),
     ...(params.reply.question ? { question: params.reply.question } : {}),
     ...(params.reply.step ? { step: params.reply.step } : {}),
     ...(params.proposalId ? { needsApproval: true, proposalId: params.proposalId } : {}),

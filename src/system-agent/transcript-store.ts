@@ -1,16 +1,11 @@
 // Durable rolling transcript for the machine-wide OpenClaw conversation.
 import { randomUUID } from "node:crypto";
+import type { SystemAgentChatHistoryTurn } from "../../packages/gateway-protocol/src/index.js";
 import { createSqliteAuditRecordStore } from "../infra/sqlite-audit-record-store.js";
 
-type SystemAgentTranscriptEntry = {
-  role: "user" | "assistant" | "reset";
-  text: string;
-  at: number;
-};
-
-type SystemAgentTranscriptTurn = Omit<SystemAgentTranscriptEntry, "role"> & {
-  role: "user" | "assistant";
-};
+type SystemAgentTranscriptEntry =
+  | SystemAgentChatHistoryTurn
+  | { role: "reset"; text: ""; at: number };
 
 const SYSTEM_AGENT_TRANSCRIPT_SCOPE = "system-agent-transcript";
 const SYSTEM_AGENT_TRANSCRIPT_MAX_ENTRIES = 1_000;
@@ -43,7 +38,7 @@ export function appendTranscriptReset(opts: { env?: NodeJS.ProcessEnv } = {}): v
 export function readTranscriptTail(
   limit: number,
   opts: { afterLastReset?: boolean; env?: NodeJS.ProcessEnv } = {},
-): SystemAgentTranscriptTurn[] {
+): SystemAgentChatHistoryTurn[] {
   const entries = openTranscriptStore(opts.env)
     .latest({ limit })
     .toReversed()
@@ -52,5 +47,5 @@ export function readTranscriptTail(
     ? entries.findLastIndex((turn) => turn.role === "reset")
     : -1;
   const window = opts.afterLastReset ? entries.slice(resetIndex + 1) : entries;
-  return window.filter((turn): turn is SystemAgentTranscriptTurn => turn.role !== "reset");
+  return window.filter((turn): turn is SystemAgentChatHistoryTurn => turn.role !== "reset");
 }

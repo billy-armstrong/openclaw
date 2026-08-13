@@ -78,6 +78,12 @@ export const SystemAgentChatQuestionSchema = closedObject({
   skipAction: Type.Optional(Type.Literal("exit")),
 });
 
+export const SystemAgentWizardActionReceiptSchema = closedObject({
+  kind: Type.Union([Type.Literal("answer"), Type.Literal("cancel")]),
+  /** Ordinary non-sensitive prompt copy used to label the receipt. */
+  prompt: Type.Optional(Type.String()),
+});
+
 /** One OpenClaw reply; `action` tells clients about conversation handoffs. */
 export const SystemAgentChatResultSchema = closedObject({
   sessionId: NonEmptyString,
@@ -86,6 +92,8 @@ export const SystemAgentChatResultSchema = closedObject({
   sensitive: Type.Optional(Type.Boolean()),
   /** The hosted wizard will consume the next message as its current step answer. */
   wizardInputPending: Type.Optional(Type.Boolean()),
+  /** Sanitized receipt metadata for an accepted typed wizard action. */
+  wizardAction: Type.Optional(SystemAgentWizardActionReceiptSchema),
   action: Type.Union([
     Type.Literal("none"),
     // The user asked to talk to their agent; clients should move to their
@@ -117,6 +125,8 @@ export const SystemAgentChatHistoryTurnSchema = closedObject({
   role: Type.Union([Type.Literal("user"), Type.Literal("assistant")]),
   text: Type.String(),
   at: Type.Number(),
+  /** Present only on accepted typed controls; values and sensitive prompts are excluded. */
+  wizardAction: Type.Optional(SystemAgentWizardActionReceiptSchema),
 });
 
 export const SystemAgentChatHistoryResultSchema = closedObject({
@@ -379,6 +389,7 @@ export type SystemAgentWizardCancel = Static<typeof SystemAgentWizardCancelSchem
 export type SystemAgentChatQuestion = Static<typeof SystemAgentChatQuestionSchema>;
 export type SystemAgentChatResult = Static<typeof SystemAgentChatResultSchema>;
 export type SystemAgentChatHistoryParams = Static<typeof SystemAgentChatHistoryParamsSchema>;
+export type SystemAgentWizardActionReceipt = Static<typeof SystemAgentWizardActionReceiptSchema>;
 export type SystemAgentChatHistoryTurn = Static<typeof SystemAgentChatHistoryTurnSchema>;
 export type SystemAgentChatHistoryResult = Static<typeof SystemAgentChatHistoryResultSchema>;
 export type SystemChangeEntry = Static<typeof SystemChangeEntrySchema>;

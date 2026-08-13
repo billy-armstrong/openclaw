@@ -7,6 +7,7 @@ import {
 } from "../index.js";
 import {
   SystemAgentChatQuestionSchema,
+  SystemAgentChatResultSchema,
   SystemAgentChatHistoryResultSchema,
   SystemAgentSetupDetectResultSchema,
   SystemAgentSetupVerifyResultSchema,
@@ -88,6 +89,26 @@ describe("OpenClaw chat question protocol", () => {
   });
 });
 
+describe("OpenClaw chat result protocol", () => {
+  const result = { sessionId: "session-1", reply: "Choose again.", action: "none" };
+
+  it("accepts only sanitized accepted wizard-action metadata", () => {
+    expect(Value.Check(SystemAgentChatResultSchema, result)).toBe(true);
+    expect(
+      Value.Check(SystemAgentChatResultSchema, {
+        ...result,
+        wizardAction: { kind: "answer", prompt: "Choose a channel" },
+      }),
+    ).toBe(true);
+    expect(
+      Value.Check(SystemAgentChatResultSchema, {
+        ...result,
+        wizardAction: { kind: "answer", value: "secret" },
+      }),
+    ).toBe(false);
+  });
+});
+
 describe("OpenClaw chat history protocol", () => {
   it("accepts the default request and bounds explicit limits", () => {
     expect(validateSystemAgentChatHistoryParams({})).toBe(true);
@@ -130,6 +151,42 @@ describe("OpenClaw chat history protocol", () => {
         },
       }),
     ).toBe(true);
+  });
+
+  it("accepts minimal wizard-action presentation metadata on live session turns", () => {
+    const turn = {
+      role: "user",
+      text: "Slack bot",
+      at: 2,
+      wizardAction: {
+        kind: "answer",
+        prompt: "How should OpenClaw appear in Slack?",
+      },
+    };
+    expect(Value.Check(SystemAgentChatHistoryResultSchema, { turns: [turn] })).toBe(true);
+    expect(
+      Value.Check(SystemAgentChatHistoryResultSchema, {
+        turns: [{ ...turn, sessionId: "slack-session" }],
+      }),
+    ).toBe(false);
+    expect(
+      Value.Check(SystemAgentChatHistoryResultSchema, {
+        turns: [{ ...turn, wizardAction: { ...turn.wizardAction, kind: "unknown" } }],
+      }),
+    ).toBe(false);
+    expect(
+      Value.Check(SystemAgentChatHistoryResultSchema, {
+        turns: [
+          {
+            ...turn,
+            wizardAction: {
+              ...turn.wizardAction,
+              externalUrl: "https://auth.example.test/device?token=secret",
+            },
+          },
+        ],
+      }),
+    ).toBe(false);
   });
 });
 

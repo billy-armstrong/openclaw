@@ -116,26 +116,40 @@ describe("system-agent chat input", () => {
     expect(handle).not.toHaveBeenCalled();
   });
 
-  it("preserves the enriched wizard step in the gateway result", () => {
-    expect(
-      buildSystemAgentChatResult({
-        sessionId: "s1",
-        reply: {
-          text: "Choose a channel.",
-          action: "none",
-          step: {
-            id: "channel",
-            type: "select",
-            message: "Channel",
-            options: [{ label: "Twitch", value: "twitch" }],
-          },
+  it("forwards only owner-accepted wizard receipt metadata", () => {
+    const rejected = buildSystemAgentChatResult({
+      sessionId: "s1",
+      reply: {
+        text: "Choose a channel.",
+        action: "none",
+        wizardActionAccepted: false,
+        wizardAction: { kind: "answer", prompt: "Channel" },
+        step: {
+          id: "channel",
+          type: "select",
+          message: "Channel",
+          options: [{ label: "Twitch", value: "twitch" }],
         },
-      }),
-    ).toMatchObject({
+      },
+    });
+    expect(rejected).toMatchObject({
       sessionId: "s1",
       reply: "Choose a channel.",
       action: "none",
       step: { id: "channel", type: "select" },
     });
+    expect(rejected).not.toHaveProperty("wizardAction");
+
+    expect(
+      buildSystemAgentChatResult({
+        sessionId: "s1",
+        reply: {
+          text: "Next step.",
+          action: "none",
+          wizardActionAccepted: true,
+          wizardAction: { kind: "answer", prompt: "Channel" },
+        },
+      }).wizardAction,
+    ).toEqual({ kind: "answer", prompt: "Channel" });
   });
 });

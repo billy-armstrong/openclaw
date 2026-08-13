@@ -4,6 +4,11 @@
 
 import { expectDefined } from "@openclaw/normalization-core";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import type {
+  SystemAgentChatHistoryTurn,
+  SystemAgentChatParams,
+  SystemAgentChatResult,
+} from "../../../packages/gateway-protocol/src/index.js";
 import type { OpenClawConfig } from "../../config/types.openclaw.js";
 import { resetCommandQueueStateForTest } from "../../process/command-queue.test-support.js";
 import { closeOpenClawStateDatabase } from "../../state/openclaw-state-db.js";
@@ -166,7 +171,11 @@ describe("openclaw.chat reset boundary", () => {
         {
           wizardDependencies: {
             runChannelSetupWizard: async (_channel, prompter) => {
-              await prompter.text({ message: "Bot token" });
+              await prompter.text({
+                message: "Port",
+                validate: (value) => (value === "18789" ? undefined : "Enter port 18789"),
+              });
+              await prompter.text({ message: "Bot token", sensitive: true });
             },
           },
         },
@@ -183,29 +192,29 @@ describe("openclaw.chat reset boundary", () => {
         ],
       ]);
       const context = { systemAgentSessions: sessions } as unknown as GatewayRequestContext;
-      const chatResponses: Array<{ ok: boolean; payload?: unknown; error?: unknown }> = [];
+      const sendChat = async (params: SystemAgentChatParams): Promise<SystemAgentChatResult> => {
+        let result: SystemAgentChatResult | undefined;
+        await expectDefined(
+          systemAgentHandlers["openclaw.chat"],
+          'systemAgentHandlers["openclaw.chat"] test invariant',
+        )({
+          params,
+          client,
+          context,
+          respond: (ok: boolean, payload?: unknown, error?: unknown) => {
+            expect(error).toBeUndefined();
+            expect(ok).toBe(true);
+            result = payload as SystemAgentChatResult;
+          },
+        } as never);
+        return expectDefined(result, "expected chat result");
+      };
 
-      await expectDefined(
-        systemAgentHandlers["openclaw.chat"],
-        'systemAgentHandlers["openclaw.chat"] test invariant',
-      )({
-        params: { sessionId: "recover-session", message: "connect telegram" },
-        client,
-        context,
-        respond: (ok: boolean, payload?: unknown, error?: unknown) =>
-          chatResponses.push({ ok, payload, error }),
-      } as never);
-
-      expect(chatResponses).toEqual([
-        {
-          ok: true,
-          payload: expect.objectContaining({
-            wizardInputPending: true,
-            step: expect.objectContaining({ message: "Bot token" }),
-          }),
-          error: undefined,
-        },
-      ]);
+      const prompt = await sendChat({ sessionId: "recover-session", message: "connect telegram" });
+      expect(prompt).toMatchObject({
+        wizardInputPending: true,
+        step: { message: "Port" },
+      });
       const historyResponses: Array<{ ok: boolean; payload?: unknown; error?: unknown }> = [];
       await expectDefined(
         systemAgentHandlers["openclaw.chat.history"],
@@ -229,6 +238,52 @@ describe("openclaw.chat reset boundary", () => {
         },
       });
       expect(historyResponses[0]).not.toHaveProperty("payload.turns.0.sessionId");
+      const portStepId = expectDefined(prompt.step?.id, "expected port step");
+      const rejected = await sendChat({
+        sessionId: "recover-session",
+        wizardAnswer: { stepId: portStepId, value: "banana" },
+      });
+      expect(rejected).not.toHaveProperty("wizardAction");
+      const accepted = await sendChat({
+        sessionId: "recover-session",
+        wizardAnswer: { stepId: portStepId, value: "18789" },
+      });
+      expect(accepted.wizardAction).toEqual({ kind: "answer", prompt: "Port" });
+      const secretStepId = expectDefined(accepted.step?.id, "expected sensitive step");
+      const cancelled = await sendChat({
+        sessionId: "recover-session",
+        wizardCancel: { stepId: secretStepId },
+      });
+      expect(cancelled.wizardAction).toEqual({ kind: "cancel" });
+
+      closeOpenClawStateDatabase();
+      sessions.clear();
+      historyResponses.length = 0;
+      await expectDefined(
+        systemAgentHandlers["openclaw.chat.history"],
+        'systemAgentHandlers["openclaw.chat.history"] test invariant',
+      )({
+        params: { sessionId: "recover-session" },
+        client,
+        context,
+        respond: (ok: boolean, payload?: unknown, error?: unknown) =>
+          historyResponses.push({ ok, payload, error }),
+      } as never);
+
+      const historyResponse = expectDefined(historyResponses[0], "recovery history response");
+      expect(historyResponse).toMatchObject({ ok: true, error: undefined });
+      expect(historyResponse).not.toHaveProperty("payload.activeWizard");
+      const restoredTurns = (historyResponse.payload as { turns: SystemAgentChatHistoryTurn[] })
+        .turns;
+      expect(restoredTurns.find((turn) => turn.text === "banana")).not.toHaveProperty(
+        "wizardAction",
+      );
+      expect(restoredTurns.find((turn) => turn.text === "18789")).toMatchObject({
+        wizardAction: { kind: "answer", prompt: "Port" },
+      });
+      const restoredCancel = restoredTurns.find((turn) => turn.text === "Cancel");
+      expect(restoredCancel).toMatchObject({ wizardAction: { kind: "cancel" } });
+      expect(restoredCancel?.wizardAction).not.toHaveProperty("prompt");
     });
   });
 

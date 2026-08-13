@@ -61,8 +61,24 @@ describe("custodian panel", () => {
     store.connect(context, "caretaker");
     await vi.waitFor(() => expect(request).toHaveBeenCalledOnce());
     store.messages = [
-      { id: 1, role: "assistant", text: "Ready.", at: 1, question: null, step: null },
-      { id: 2, role: "user", text: "Check this system", at: 2, question: null, step: null },
+      {
+        id: 1,
+        role: "assistant",
+        text: "Ready.",
+        at: 1,
+        question: null,
+        step: null,
+        structuredResponse: null,
+      },
+      {
+        id: 2,
+        role: "user",
+        text: "Check this system",
+        at: 2,
+        question: null,
+        step: null,
+        structuredResponse: null,
+      },
     ];
 
     panel.suppressed = false;
@@ -90,7 +106,15 @@ describe("custodian panel", () => {
   it("hides and restores the dock across full-page suppression", async () => {
     const { panel, store } = await mountPanel();
     store.messages = [
-      { id: 1, role: "user", text: "Check this system", at: 1, question: null, step: null },
+      {
+        id: 1,
+        role: "user",
+        text: "Check this system",
+        at: 1,
+        question: null,
+        step: null,
+        structuredResponse: null,
+      },
     ];
 
     panel.suppressed = false;
@@ -116,7 +140,15 @@ describe("custodian panel", () => {
     store.connect(context, "caretaker");
     await vi.waitFor(() => expect(request).toHaveBeenCalledOnce());
     store.messages = [
-      { id: 1, role: "user", text: "Check this system", at: 1, question: null, step: null },
+      {
+        id: 1,
+        role: "user",
+        text: "Check this system",
+        at: 1,
+        question: null,
+        step: null,
+        structuredResponse: null,
+      },
     ];
     panel.available = false;
     panel.suppressed = false;
@@ -141,8 +173,17 @@ describe("custodian panel", () => {
         at: 1,
         question: null,
         step: null,
+        structuredResponse: null,
       },
-      { id: 2, role: "user", text: "Continue setup", at: 2, question: null, step: null },
+      {
+        id: 2,
+        role: "user",
+        text: "Continue setup",
+        at: 2,
+        question: null,
+        step: null,
+        structuredResponse: null,
+      },
     ];
 
     panel.suppressed = false;
@@ -161,7 +202,15 @@ describe("custodian panel", () => {
   it("updates the panel mascot mood with shared sending state", async () => {
     const { panel, store } = await mountPanel();
     store.messages = [
-      { id: 1, role: "user", text: "Check this system", at: 1, question: null, step: null },
+      {
+        id: 1,
+        role: "user",
+        text: "Check this system",
+        at: 1,
+        question: null,
+        step: null,
+        structuredResponse: null,
+      },
     ];
     panel.suppressed = false;
     panel.minimizeRequestId = 1;

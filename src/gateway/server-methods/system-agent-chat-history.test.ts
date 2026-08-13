@@ -2,8 +2,10 @@ import { expectDefined } from "@openclaw/normalization-core";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { createDeferred } from "../../../test/helpers/promise.js";
 import { resetCommandQueueStateForTest } from "../../process/command-queue.test-support.js";
+import { appendTranscriptTurn } from "../../system-agent/transcript-store.js";
 import {
   appendSystemAgentRecoveryHistory,
+  persistSystemAgentEngineHistory,
   resolveSystemAgentSessionOwnerKey,
   setSystemAgentRecoveryHistory,
   systemAgentChatHistoryHandler,
@@ -18,10 +20,12 @@ const turns = [
 ];
 
 const transcriptStoreMocks = vi.hoisted(() => ({
+  appendTranscriptTurn: vi.fn(),
   readTranscriptTail: vi.fn(),
 }));
 
 vi.mock("../../system-agent/transcript-store.js", () => ({
+  appendTranscriptTurn: transcriptStoreMocks.appendTranscriptTurn,
   readTranscriptTail: transcriptStoreMocks.readTranscriptTail,
 }));
 
@@ -66,11 +70,64 @@ function makeInvocation(params: {
 
 describe("openclaw.chat.history wizard recovery", () => {
   beforeEach(() => {
+    transcriptStoreMocks.appendTranscriptTurn.mockReset();
     transcriptStoreMocks.readTranscriptTail.mockReset().mockReturnValue(turns);
   });
 
   afterEach(() => {
     resetCommandQueueStateForTest();
+  });
+
+  it("keeps accepted action metadata on live and durable recovery turns", () => {
+    const wizardAction = {
+      kind: "cancel" as const,
+    };
+    const recoveryTurns = persistSystemAgentEngineHistory(
+      {
+        historySince: () => [
+          { role: "user", text: "Cancel" },
+          { role: "assistant", text: "Twitch setup cancelled." },
+        ],
+      },
+      0,
+      { wizardAction, wizardActionAccepted: true },
+    );
+
+    expect(recoveryTurns).toEqual([
+      expect.objectContaining({
+        role: "user",
+        wizardAction,
+      }),
+      expect.objectContaining({
+        role: "assistant",
+      }),
+    ]);
+    expect(vi.mocked(appendTranscriptTurn).mock.calls.map(([turn]) => turn)).toEqual([
+      expect.objectContaining({ role: "user", text: "Cancel", wizardAction }),
+      expect.objectContaining({ role: "assistant", text: "Twitch setup cancelled." }),
+    ]);
+    expect(vi.mocked(appendTranscriptTurn).mock.calls[1]?.[0]).not.toHaveProperty("wizardAction");
+  });
+
+  it("omits action metadata when the engine rejects the typed answer", () => {
+    persistSystemAgentEngineHistory(
+      {
+        historySince: () => [
+          { role: "user", text: "Invalid value" },
+          { role: "assistant", text: "Choose again." },
+        ],
+      },
+      0,
+      {
+        wizardAction: { kind: "answer", prompt: "Port" },
+        wizardActionAccepted: false,
+      },
+    );
+
+    expect(vi.mocked(appendTranscriptTurn)).toHaveBeenCalledTimes(2);
+    for (const [turn] of vi.mocked(appendTranscriptTurn).mock.calls) {
+      expect(turn).not.toHaveProperty("wizardAction");
+    }
   });
 
   it("returns an active wizard only to its bound owner", async () => {
@@ -176,6 +233,16 @@ describe("openclaw.chat.history wizard recovery", () => {
   });
 
   it("falls back to the global audit history after a Gateway reload", async () => {
+    const durableTurns = [
+      { role: "assistant" as const, text: "Choose one.", at: 1 },
+      {
+        role: "user" as const,
+        text: "Alpha",
+        at: 2,
+        wizardAction: { kind: "answer" as const, prompt: "Choose one" },
+      },
+    ];
+    transcriptStoreMocks.readTranscriptTail.mockReturnValue(durableTurns);
     const invocation = makeInvocation({ sessionId: "recover-session" });
     invocation.context.systemAgentSessions.clear();
 
@@ -186,7 +253,7 @@ describe("openclaw.chat.history wizard recovery", () => {
     expect(invocation.calls).toEqual([
       {
         ok: true,
-        payload: { turns },
+        payload: { turns: durableTurns },
         error: undefined,
       },
     ]);
