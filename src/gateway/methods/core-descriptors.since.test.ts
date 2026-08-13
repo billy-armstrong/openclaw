@@ -99,6 +99,9 @@ const CURRENT_TRAIN_METHODS = [
   "users.prefs.set",
   "desktop.observe",
   "desktop.launch",
+  "device.scopes.requestUpgrade",
+  "device.scopes.waitUpgrade",
+  "node.protocolFeatures.update",
 ] as const;
 
 describe("core gateway method release trains", () => {
