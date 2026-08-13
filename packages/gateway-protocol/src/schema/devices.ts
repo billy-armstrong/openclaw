@@ -1,5 +1,5 @@
 // Gateway Protocol schema module defines protocol validation shapes.
-import type { Static } from "typebox";
+import type { Static, TSchema } from "typebox";
 import { Type } from "typebox";
 import { closedObject } from "./closed-object.js";
 import { NonEmptyString } from "./primitives.js";
@@ -45,14 +45,35 @@ export const DeviceTokenRotateParamsSchema = closedObject({
  * shared/admin cross-device rotation (see `docs/cli/devices.md`). Optional because
  * gateways released before this field omit it entirely.
  */
-export const DeviceTokenRotateResultSchema = closedObject({
-  deviceId: NonEmptyString,
-  role: NonEmptyString,
-  token: Type.Optional(NonEmptyString),
-  scopes: Type.Array(NonEmptyString),
-  rotatedAtMs: Type.Integer({ minimum: 0 }),
-  tokenDelivery: Type.Optional(Type.String({ enum: ["in-band", "withheld-cross-device"] })),
-});
+const withoutDeviceTokenRotateResultField = (field: "token" | "tokenDelivery"): TSchema =>
+  ({ not: { required: [field] } }) as TSchema;
+
+export const DeviceTokenRotateResultSchema = Type.Object(
+  {
+    deviceId: NonEmptyString,
+    role: NonEmptyString,
+    token: Type.Optional(NonEmptyString),
+    scopes: Type.Array(NonEmptyString),
+    rotatedAtMs: Type.Integer({ minimum: 0 }),
+    tokenDelivery: Type.Optional(Type.String({ enum: ["in-band", "withheld-cross-device"] })),
+  },
+  {
+    additionalProperties: false,
+    // Keep one concrete object for generated clients while the wire schema
+    // rejects contradictory delivery facts. The third branch is the shipped
+    // pre-tokenDelivery response shape retained for older Gateways.
+    allOf: [
+      Type.Union([
+        Type.Object({ token: NonEmptyString, tokenDelivery: Type.Literal("in-band") }),
+        Type.Intersect([
+          Type.Object({ tokenDelivery: Type.Literal("withheld-cross-device") }),
+          withoutDeviceTokenRotateResultField("token"),
+        ]),
+        withoutDeviceTokenRotateResultField("tokenDelivery"),
+      ]),
+    ],
+  },
+);
 
 /** Revokes one role-bound device token grant. */
 export const DeviceTokenRevokeParamsSchema = closedObject({

@@ -41,4 +41,18 @@ describe("DeviceTokenRotateResultSchema", () => {
   it("rejects an empty token so an absent secret is never a blank string", () => {
     expect(validate.Check({ ...base, token: "", tokenDelivery: "in-band" })).toBe(false);
   });
+
+  it("rejects an in-band result without the token it claims to deliver", () => {
+    expect(validate.Check({ ...base, tokenDelivery: "in-band" })).toBe(false);
+  });
+
+  it("rejects a withheld result that still exposes the token", () => {
+    expect(
+      validate.Check({
+        ...base,
+        token: "unexpected-token",
+        tokenDelivery: "withheld-cross-device",
+      }),
+    ).toBe(false);
+  });
 });
