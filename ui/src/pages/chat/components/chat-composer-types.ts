@@ -131,6 +131,7 @@ export type ChatComposerProps = {
   onDraftChange: (next: string) => void;
   onRequestUpdate?: () => void;
   onHistoryKeydown?: (input: ChatInputHistoryKeyInput) => ChatInputHistoryKeyResult;
+  onCompletionOwnerChange?: () => void;
   onSlashIntent?: () => void | Promise<void>;
   onSend: () => void;
   onCompact?: () => void | Promise<void>;
@@ -179,6 +180,7 @@ export type ChatComposerState = {
   slashMenuCommand: SlashCommandDef | null;
   slashMenuArgItems: string[];
   slashCommandRefreshPending: boolean;
+  slashCommandRefreshGeneration: number;
   skillMenuOpen: boolean;
   skillMenuItems: SlashCommandDef[];
   skillMenuIndex: number;
@@ -212,5 +214,6 @@ export type ChatComposerState = {
   textareaRef: ((element?: Element) => void) | null;
   dictation: ComposerDictationController | null;
   dictationDraftKey: string | null;
+  completionDraftKey: string | null;
   dictationSelection: { start: number; end: number } | null;
 };
