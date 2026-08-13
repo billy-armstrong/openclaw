@@ -17,7 +17,9 @@ import { isFastTestRuntimeEnv } from "../../infra/env.js";
 import { normalizeAgentId } from "../../routing/session-key.js";
 import { ModelSelectionLockedError } from "../../sessions/model-overrides.js";
 import { createLazyImportLoader } from "../../shared/lazy-promise.js";
+import { resolveInlineSkillCommandInvocation } from "../../skills/discovery/chat-command-invocation.js";
 import type { SkillCommandSpec } from "../../skills/types.js";
+import { INTERNAL_MESSAGE_CHANNEL } from "../../utils/message-channel.js";
 import { isNativeCommandTurn, resolveCommandTurnContext } from "../command-turn-context.js";
 import { shouldHandleTextCommands } from "../commands-text-routing.js";
 import { markCommandReplyForDelivery } from "../reply-payload.js";
@@ -55,6 +57,7 @@ import {
   resolveContextTokens,
 } from "./model-selection.js";
 import { formatElevatedUnavailableMessage, resolveElevatedPermissions } from "./reply-elevated.js";
+import { isPotentialInlineSkillName, listColonMarkedInlineSkillNames } from "./reply-inline.js";
 import { resolveRuntimePolicySessionKey } from "./runtime-policy-session-key.js";
 import type { TypingController } from "./typing.js";
 
@@ -237,6 +240,11 @@ export async function resolveReplyDirectives(params: {
     Object.values(cfg.agents?.defaults?.models ?? {}).some((entry) =>
       Boolean(normalizeOptionalString(entry.alias)),
     );
+  const canUseInlineSkills = canInterpretTextDirectives && ctx.Surface === INTERNAL_MESSAGE_CHANNEL;
+  const inlineSkillMarkerNames = canUseInlineSkills
+    ? listColonMarkedInlineSkillNames(commandText)
+    : [];
+  const hasInlineSkillCandidate = inlineSkillMarkerNames.some(isPotentialInlineSkillName);
   const reservedCommands = new Set<string>();
   if (hasConfiguredModelAliases) {
     const { listChatCommands } = await loadCommandsRegistry();
@@ -255,10 +263,12 @@ export async function resolveReplyDirectives(params: {
       })
     : [];
 
-  // Only load workspace skill commands when we actually need them to filter aliases.
-  // This avoids scanning skills for messages that only use plain text with no slash syntax.
+  // Only load workspace skill commands when aliases or explicit WebChat skill markers need them.
+  // This avoids scanning skills for ordinary text, paths, and built-in slash directives.
   const skillCommands =
-    canInterpretTextDirectives && commandTextHasSlash && rawAliases.length > 0
+    canInterpretTextDirectives &&
+    commandTextHasSlash &&
+    (rawAliases.length > 0 || hasInlineSkillCandidate)
       ? (await loadSkillCommands()).listSkillCommandsForWorkspace({
           workspaceDir,
           cfg,
@@ -269,6 +279,14 @@ export async function resolveReplyDirectives(params: {
         })
       : [];
   reserveSkillCommandNames({ reservedCommands, skillCommands });
+
+  const hasInlineSkillInvocation =
+    canUseInlineSkills &&
+    skillCommands.length > 0 &&
+    resolveInlineSkillCommandInvocation({
+      commandBodyNormalized: command.commandBodyNormalized,
+      skillCommands,
+    }) !== null;
 
   const configuredAliases = rawAliases.filter(
     (alias) => !reservedCommands.has(normalizeLowercaseStringOrEmpty(alias)),
@@ -291,7 +309,7 @@ export async function resolveReplyDirectives(params: {
     agentText: sessionCtx.agentText,
     modelAliases: configuredAliases,
     nativeCommand: nativeDirectiveCommand,
-    canInterpretTextDirectives,
+    canInterpretTextDirectives: canInterpretTextDirectives && !hasInlineSkillInvocation,
     isAuthorizedSender: command.isAuthorizedSender,
     isGroup,
     wasMentioned: ctx.WasMentioned === true,

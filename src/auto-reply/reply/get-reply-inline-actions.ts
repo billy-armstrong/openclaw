@@ -13,7 +13,6 @@ import { createLazyImportLoader } from "../../shared/lazy-promise.js";
 import { resolveInlineSkillCommandInvocation } from "../../skills/discovery/chat-command-invocation.js";
 import {
   hasSkillReferenceCandidate,
-  listReservedChatSlashCommandNames,
   resolveSkillCommandInvocation,
   resolveSkillReferenceInvocations,
 } from "../../skills/discovery/chat-commands.js";
@@ -52,6 +51,7 @@ import type { createModelSelectionState } from "./model-selection.js";
 import {
   extractInlineSimpleCommand,
   getStandaloneSlashCommandName,
+  isPotentialInlineSkillName,
   listColonMarkedInlineSkillNames,
 } from "./reply-inline.js";
 import type { TypingController } from "./typing.js";
@@ -77,7 +77,6 @@ const abortCutoffRuntimeLoader = createLazyImportLoader<AbortCutoffRuntime>(
 const commandsRuntimeLoader = createLazyImportLoader<CommandsRuntime>(
   () => import("./commands.runtime.js"),
 );
-let builtinSlashCommands: Set<string> | null = null;
 const MAX_EXPLICIT_SKILL_REFERENCES = 8;
 function loadSkillCommandsRuntime(): Promise<SkillCommandsRuntime> {
   return skillCommandsRuntimeLoader.load();
@@ -91,24 +90,6 @@ function loadAbortCutoffRuntime(): Promise<AbortCutoffRuntime> {
 
 function loadCommandsRuntime(): Promise<CommandsRuntime> {
   return commandsRuntimeLoader.load();
-}
-
-function getBuiltinSlashCommands(): Set<string> {
-  if (builtinSlashCommands) {
-    return builtinSlashCommands;
-  }
-  builtinSlashCommands = listReservedChatSlashCommandNames([
-    "btw",
-    "think",
-    "verbose",
-    "reasoning",
-    "elevated",
-    "exec",
-    "model",
-    "status",
-    "queue",
-  ]);
-  return builtinSlashCommands;
 }
 
 function applyExplicitSkillReferences(
@@ -346,12 +327,8 @@ export async function handleInlineActions(params: {
   const shouldLoadSkillCommands =
     allowTextCommands &&
     (hasSkillReferences ||
-      (standaloneSlashName !== null &&
-        (standaloneSlashName === "skill" || !getBuiltinSlashCommands().has(standaloneSlashName))) ||
-      (canUseInlineSkills &&
-        inlineSkillMarkerNames.some(
-          (name) => name === "skill" || !getBuiltinSlashCommands().has(name),
-        )));
+      (standaloneSlashName !== null && isPotentialInlineSkillName(standaloneSlashName)) ||
+      (canUseInlineSkills && inlineSkillMarkerNames.some(isPotentialInlineSkillName)));
   const canReusePreloadedSkillCommands = execOverrides === undefined;
   const skillCommands =
     shouldLoadSkillCommands &&
