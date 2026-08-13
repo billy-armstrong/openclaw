@@ -9,14 +9,15 @@ import {
   TSGO_TARGETED_TEST_SHARED_SHARDS,
 } from "./tsgo-core-test-shards.mts";
 
-const PACKAGE_TEST_CONFIGS = new Set(["tsconfig.test.packages.json"]);
-const TARGETED_SHARED_TEST_SPARSE_ROOTS = new Map(
-  TSGO_TARGETED_TEST_SHARED_SHARDS.map((shard) => [path.basename(shard.config), shard.sparseRoots]),
+const MANIFEST_TEST_SPARSE_ROOTS = new Map(
+  [...TSGO_CORE_TEST_SHARDS, ...TSGO_TARGETED_TEST_SHARED_SHARDS].flatMap((shard) =>
+    "sparseRoots" in shard ? ([[path.basename(shard.config), shard.sparseRoots]] as const) : [],
+  ),
 );
 const CORE_TEST_CONFIGS = new Set([
   "tsconfig.core.test.json",
   ...TSGO_CORE_TEST_SHARDS.map((shard) => path.basename(shard.config)).filter(
-    (config) => !PACKAGE_TEST_CONFIGS.has(config),
+    (config) => !MANIFEST_TEST_SPARSE_ROOTS.has(config),
   ),
 ]);
 
@@ -26,14 +27,12 @@ const GUARDED_CONFIGS = new Set([
   ...CORE_PROD_CONFIGS,
   ...UI_PROD_CONFIGS,
   ...CORE_TEST_CONFIGS,
-  ...PACKAGE_TEST_CONFIGS,
-  ...TARGETED_SHARED_TEST_SPARSE_ROOTS.keys(),
+  ...MANIFEST_TEST_SPARSE_ROOTS.keys(),
 ]);
 const TSGO_SPARSE_SKIP_ENV_KEY = "OPENCLAW_TSGO_SPARSE_SKIP";
 const CORE_PROD_SPARSE_ROOTS = ["packages"];
 const UI_PROD_SPARSE_ROOTS = ["packages", "src", "ui/config", "ui/src"];
 const CORE_TEST_SPARSE_ROOTS = ["packages", "ui/config", "ui/src"];
-const PACKAGE_TEST_SPARSE_ROOTS = ["packages"];
 
 const CORE_PROD_REQUIRED_PATHS = [
   {
@@ -155,9 +154,9 @@ export function getSparseTsgoGuardError(
 }
 
 function getRequiredSparseRootsForProject(projectName: string) {
-  const sharedTestRoots = TARGETED_SHARED_TEST_SPARSE_ROOTS.get(projectName);
-  if (sharedTestRoots) {
-    return sharedTestRoots;
+  const manifestTestRoots = MANIFEST_TEST_SPARSE_ROOTS.get(projectName);
+  if (manifestTestRoots) {
+    return manifestTestRoots;
   }
   if (CORE_PROD_CONFIGS.has(projectName)) {
     return CORE_PROD_SPARSE_ROOTS;
@@ -167,9 +166,6 @@ function getRequiredSparseRootsForProject(projectName: string) {
   }
   if (CORE_TEST_CONFIGS.has(projectName)) {
     return CORE_TEST_SPARSE_ROOTS;
-  }
-  if (PACKAGE_TEST_CONFIGS.has(projectName)) {
-    return PACKAGE_TEST_SPARSE_ROOTS;
   }
   return [];
 }

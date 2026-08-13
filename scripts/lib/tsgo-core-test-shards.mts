@@ -46,6 +46,7 @@ export const TSGO_CORE_TEST_SHARDS = [
     name: "packages",
     group: "packages",
     config: "test/tsconfig/tsconfig.test.packages.json",
+    sparseRoots: ["packages", "src", "ui/src"],
   },
 ] as const;
 
