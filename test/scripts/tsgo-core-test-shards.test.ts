@@ -46,6 +46,7 @@ describe("tsgo core test shards", () => {
       expect(shards?.at(-1)).toEqual({
         name: "extension-declarations",
         config: "test/tsconfig/tsconfig.test.extension-declarations.json",
+        sparseRoots: ["extensions"],
       });
     },
   );

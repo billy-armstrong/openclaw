@@ -51,10 +51,11 @@ export const TSGO_CORE_TEST_SHARDS = [
 
 export type TsgoCoreTestShard = (typeof TSGO_CORE_TEST_SHARDS)[number];
 
-const TSGO_TARGETED_TEST_SHARED_SHARDS = [
+export const TSGO_TARGETED_TEST_SHARED_SHARDS = [
   {
     name: "extension-declarations",
     config: "test/tsconfig/tsconfig.test.extension-declarations.json",
+    sparseRoots: ["extensions"],
   },
 ] as const;
 

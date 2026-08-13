@@ -4,9 +4,15 @@ import fs from "node:fs";
 import path from "node:path";
 import { readFlagValue } from "./arg-utils.mts";
 import { createManagedCommandInvocation } from "./managed-child-process.mts";
-import { TSGO_CORE_TEST_SHARDS } from "./tsgo-core-test-shards.mts";
+import {
+  TSGO_CORE_TEST_SHARDS,
+  TSGO_TARGETED_TEST_SHARED_SHARDS,
+} from "./tsgo-core-test-shards.mts";
 
 const PACKAGE_TEST_CONFIGS = new Set(["tsconfig.test.packages.json"]);
+const TARGETED_SHARED_TEST_SPARSE_ROOTS = new Map(
+  TSGO_TARGETED_TEST_SHARED_SHARDS.map((shard) => [path.basename(shard.config), shard.sparseRoots]),
+);
 const CORE_TEST_CONFIGS = new Set([
   "tsconfig.core.test.json",
   ...TSGO_CORE_TEST_SHARDS.map((shard) => path.basename(shard.config)).filter(
@@ -21,6 +27,7 @@ const GUARDED_CONFIGS = new Set([
   ...UI_PROD_CONFIGS,
   ...CORE_TEST_CONFIGS,
   ...PACKAGE_TEST_CONFIGS,
+  ...TARGETED_SHARED_TEST_SPARSE_ROOTS.keys(),
 ]);
 const TSGO_SPARSE_SKIP_ENV_KEY = "OPENCLAW_TSGO_SPARSE_SKIP";
 const CORE_PROD_SPARSE_ROOTS = ["packages"];
@@ -148,6 +155,10 @@ export function getSparseTsgoGuardError(
 }
 
 function getRequiredSparseRootsForProject(projectName: string) {
+  const sharedTestRoots = TARGETED_SHARED_TEST_SPARSE_ROOTS.get(projectName);
+  if (sharedTestRoots) {
+    return sharedTestRoots;
+  }
   if (CORE_PROD_CONFIGS.has(projectName)) {
     return CORE_PROD_SPARSE_ROOTS;
   }
