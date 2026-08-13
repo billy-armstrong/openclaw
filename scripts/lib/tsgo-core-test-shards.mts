@@ -1,25 +1,43 @@
 export const TSGO_CORE_TEST_MAX_ROOTS = 720;
 
 export const TSGO_CORE_TEST_SHARDS = [
-  { name: "agents-root", config: "test/tsconfig/tsconfig.core.test.agents-root.json" },
-  { name: "agents-other", config: "test/tsconfig/tsconfig.core.test.agents-other.json" },
-  { name: "gateway", config: "test/tsconfig/tsconfig.core.test.gateway.json" },
-  { name: "infra", config: "test/tsconfig/tsconfig.core.test.infra.json" },
-  { name: "commands", config: "test/tsconfig/tsconfig.core.test.commands.json" },
+  {
+    name: "agents-root",
+    group: "src",
+    config: "test/tsconfig/tsconfig.core.test.agents-root.json",
+  },
+  {
+    name: "agents-other",
+    group: "src",
+    config: "test/tsconfig/tsconfig.core.test.agents-other.json",
+  },
+  { name: "gateway", group: "src", config: "test/tsconfig/tsconfig.core.test.gateway.json" },
+  { name: "infra", group: "src", config: "test/tsconfig/tsconfig.core.test.infra.json" },
+  { name: "commands", group: "src", config: "test/tsconfig/tsconfig.core.test.commands.json" },
   {
     name: "plugins-platform",
+    group: "src",
     config: "test/tsconfig/tsconfig.core.test.plugins-platform.json",
   },
-  { name: "config-cli", config: "test/tsconfig/tsconfig.core.test.config-cli.json" },
-  { name: "messaging", config: "test/tsconfig/tsconfig.core.test.messaging.json" },
-  { name: "services", config: "test/tsconfig/tsconfig.core.test.services.json" },
-  { name: "other", config: "test/tsconfig/tsconfig.core.test.other.json" },
+  {
+    name: "config-cli",
+    group: "src",
+    config: "test/tsconfig/tsconfig.core.test.config-cli.json",
+  },
+  { name: "messaging", group: "src", config: "test/tsconfig/tsconfig.core.test.messaging.json" },
+  { name: "services", group: "src", config: "test/tsconfig/tsconfig.core.test.services.json" },
+  { name: "other", group: "src", config: "test/tsconfig/tsconfig.core.test.other.json" },
   {
     name: "ui-pages-e2e",
+    group: "ui",
     config: "test/tsconfig/tsconfig.core.test.ui-pages-e2e.json",
   },
-  { name: "ui-other", config: "test/tsconfig/tsconfig.core.test.ui-other.json" },
-  { name: "packages", config: "test/tsconfig/tsconfig.test.packages.json" },
+  { name: "ui-other", group: "ui", config: "test/tsconfig/tsconfig.core.test.ui-other.json" },
+  {
+    name: "packages",
+    group: "packages",
+    config: "test/tsconfig/tsconfig.test.packages.json",
+  },
 ] as const;
 
 export type TsgoCoreTestShard = (typeof TSGO_CORE_TEST_SHARDS)[number];

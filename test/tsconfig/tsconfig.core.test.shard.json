@@ -1,5 +1,8 @@
 {
   "extends": "./tsconfig.core.test.json",
+  "compilerOptions": {
+    "incremental": true
+  },
   "files": [
     "../../src/config/sessions/session-entry.test-compat.d.ts",
     "../../src/infra/host-env-security-policy.d.ts",
