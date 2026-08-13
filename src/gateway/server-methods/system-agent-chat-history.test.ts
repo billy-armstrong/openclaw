@@ -1,7 +1,9 @@
+import { expectDefined } from "@openclaw/normalization-core";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { createDeferred } from "../../../test/helpers/promise.js";
 import {
   appendSystemAgentRecoveryHistory,
+  resolveSystemAgentSessionOwnerKey,
   setSystemAgentRecoveryHistory,
   systemAgentChatHistoryHandler,
 } from "./system-agent-chat-history.js";
@@ -31,12 +33,13 @@ function makeInvocation(params: {
   sessionId?: string;
   limit?: number;
   client?: GatewayClient;
+  ownerKey?: string;
   activeWizardStep?: ReturnType<typeof vi.fn>;
 }) {
   const calls: Array<{ ok: boolean; payload?: unknown; error?: unknown }> = [];
   const activeWizardStep = params.activeWizardStep ?? vi.fn().mockResolvedValue(undefined);
   const session = {
-    ownerKey: "device:device-owner",
+    ownerKey: params.ownerKey ?? "device:device-owner",
     engine: {
       activeWizardStep,
     },
@@ -116,6 +119,55 @@ describe("openclaw.chat.history wizard recovery", () => {
     ]);
     expect(activeWizardStep).toHaveBeenCalledOnce();
     expect(foreign.session.lastUsedAt).toBe(1);
+  });
+
+  it("recovers the active wizard through another login linked to the owner profile", async () => {
+    const profile = {
+      profileId: "profile-owner",
+      displayName: null,
+      hasAvatar: false,
+      updatedAt: 1,
+    };
+    const creator = {
+      connId: "conn-login-a",
+      authenticatedUserId: "login-a@example.com",
+      authenticatedUserProfile: profile,
+      connect: { device: { id: "device-login-a" } },
+    } as GatewayClient;
+    const linkedLogin = {
+      connId: "conn-login-b",
+      authenticatedUserId: "login-b@example.com",
+      authenticatedUserProfile: profile,
+      connect: { device: { id: "device-login-b" } },
+    } as GatewayClient;
+    const activeWizardStep = vi.fn().mockResolvedValue({
+      id: "channel",
+      type: "select",
+      message: "Choose a channel",
+      options: ["Discord", "Slack"],
+    });
+    const ownerKey = expectDefined(
+      resolveSystemAgentSessionOwnerKey({ client: creator }),
+      "profile owner key",
+    );
+    const invocation = makeInvocation({
+      sessionId: "recover-session",
+      client: linkedLogin,
+      ownerKey,
+      activeWizardStep,
+    });
+
+    await systemAgentChatHistoryHandler(invocation.options);
+
+    expect(ownerKey).toBe("profile:profile-owner");
+    expect(invocation.calls[0]?.payload).toMatchObject({
+      turns,
+      activeWizard: {
+        sessionId: "recover-session",
+        step: { id: "channel", message: "Choose a channel" },
+      },
+    });
+    expect(activeWizardStep).toHaveBeenCalledOnce();
   });
 
   it("falls back to the global audit history after a Gateway reload", async () => {

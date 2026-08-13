@@ -46,6 +46,12 @@ export function resolveSystemAgentSessionOwnerKey(params: {
     // tool path. Keep its agent/session tuple authoritative across gateway reconnects.
     return delegationKey;
   }
+  // Linked login identities share one verified profile and recovery scope. Keep that
+  // canonical profile authoritative before falling back to the raw login identity.
+  const profileId = params.client?.authenticatedUserProfile?.profileId.trim();
+  if (profileId) {
+    return `profile:${profileId}`;
+  }
   // Authenticated users survive reconnects and may span paired devices. Otherwise
   // bind to the verified device, with the server-issued connection as a last resort.
   const userId = params.client?.authenticatedUserId?.trim();

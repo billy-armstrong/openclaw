@@ -94,6 +94,7 @@ function makeClient(params: {
   connId: string;
   deviceId?: string;
   authenticatedUserId?: string;
+  profileId?: string;
 }): GatewayClient {
   return {
     connId: params.connId,
@@ -102,6 +103,16 @@ function makeClient(params: {
       ...(params.deviceId ? { device: { id: params.deviceId } } : {}),
     },
     ...(params.authenticatedUserId ? { authenticatedUserId: params.authenticatedUserId } : {}),
+    ...(params.profileId
+      ? {
+          authenticatedUserProfile: {
+            profileId: params.profileId,
+            displayName: null,
+            hasAvatar: false,
+            updatedAt: 1,
+          },
+        }
+      : {}),
   } as GatewayClient;
 }
 
@@ -156,6 +167,48 @@ afterEach(() => {
 });
 
 describe("openclaw.chat session ownership", () => {
+  it("keeps linked login identities on their canonical profile session", async () => {
+    const sessions = new Map<string, SystemAgentChatSession>();
+    const context = makeContext(sessions);
+    const creator = makeClient({
+      connId: "conn-login-a",
+      deviceId: "device-login-a",
+      authenticatedUserId: "login-a@example.com",
+      profileId: "profile-owner",
+    });
+    const linkedLogin = makeClient({
+      connId: "conn-login-b",
+      deviceId: "device-login-b",
+      authenticatedUserId: "login-b@example.com",
+      profileId: "profile-owner",
+    });
+    const foreignProfile = makeClient({
+      connId: "conn-foreign",
+      deviceId: "device-foreign",
+      authenticatedUserId: "login-a@example.com",
+      profileId: "profile-foreign",
+    });
+
+    expect(await callChat(context, { sessionId: "linked-session" }, creator)).toMatchObject({
+      ok: true,
+    });
+    expect(sessions.get("linked-session")?.ownerKey).toBe("profile:profile-owner");
+    expect(
+      await callChat(
+        context,
+        { sessionId: "linked-session", message: "continue setup" },
+        linkedLogin,
+      ),
+    ).toMatchObject({ ok: true });
+    expect(
+      await callChat(
+        context,
+        { sessionId: "linked-session", message: "continue setup" },
+        foreignProfile,
+      ),
+    ).toMatchObject({ ok: false, error: { code: "INVALID_REQUEST" } });
+  });
+
   it("binds a new non-delegated session and rejects another principal", async () => {
     const sessions = new Map<string, SystemAgentChatSession>();
     const context = makeContext(sessions);
