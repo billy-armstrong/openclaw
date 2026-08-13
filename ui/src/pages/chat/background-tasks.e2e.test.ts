@@ -176,7 +176,13 @@ suite.define(() => {
 
         const chatUrl = page.url();
         const mainTranscript = page.locator(".chat-main .chat-thread");
-        const mainTranscriptBefore = await mainTranscript.textContent();
+        const readStableMainTranscript = () =>
+          mainTranscript.evaluate((element) => {
+            const snapshot = element.cloneNode(true) as HTMLElement;
+            snapshot.querySelectorAll("openclaw-elapsed-time").forEach((node) => node.remove());
+            return snapshot.textContent;
+          });
+        const mainTranscriptBefore = await readStableMainTranscript();
         const openRow = rail.locator('[data-task-id="task-subagent"]');
         await openRow.click();
         const detailPanel = page.locator("[data-task-detail-panel]");
@@ -205,7 +211,7 @@ suite.define(() => {
           limit: 100,
         });
         expect(page.url()).toBe(chatUrl);
-        expect(await mainTranscript.textContent()).toBe(mainTranscriptBefore);
+        expect(await readStableMainTranscript()).toBe(mainTranscriptBefore);
         await page.screenshot({
           path: path.join(railFlowDir, "02-task-detail-sidebar.png"),
           fullPage: true,
