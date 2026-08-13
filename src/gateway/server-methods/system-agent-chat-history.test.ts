@@ -1,6 +1,7 @@
 import { expectDefined } from "@openclaw/normalization-core";
-import { beforeEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { createDeferred } from "../../../test/helpers/promise.js";
+import { resetCommandQueueStateForTest } from "../../process/command-queue.test-support.js";
 import {
   appendSystemAgentRecoveryHistory,
   resolveSystemAgentSessionOwnerKey,
@@ -66,6 +67,10 @@ function makeInvocation(params: {
 describe("openclaw.chat.history wizard recovery", () => {
   beforeEach(() => {
     transcriptStoreMocks.readTranscriptTail.mockReset().mockReturnValue(turns);
+  });
+
+  afterEach(() => {
+    resetCommandQueueStateForTest();
   });
 
   it("returns an active wizard only to its bound owner", async () => {
@@ -250,13 +255,15 @@ describe("openclaw.chat.history wizard recovery", () => {
     ]);
   });
 
-  it("waits for the global Gateway queue before recovering a session", async () => {
+  it("waits for queued session creation before deciding recovery is unavailable", async () => {
     const taskStarted = createDeferred();
     const releaseTask = createDeferred();
     const invocation = makeInvocation({ sessionId: "recover-session" });
+    invocation.context.systemAgentSessions.clear();
     const globalTask = runSystemAgentGatewayTask(async () => {
       taskStarted.resolve();
       await releaseTask.promise;
+      invocation.context.systemAgentSessions.set("recover-session", invocation.session);
     });
     await taskStarted.promise;
 
@@ -277,24 +284,39 @@ describe("openclaw.chat.history wizard recovery", () => {
   });
 
   it("does not read a predecessor replaced under the same session id", async () => {
-    const taskStarted = createDeferred();
-    const releaseTask = createDeferred();
+    const turnStarted = createDeferred();
+    const releaseTurn = createDeferred();
+    const sessionRead = createDeferred();
     const invocation = makeInvocation({ sessionId: "recover-session" });
-    const globalTask = runSystemAgentGatewayTask(async () => {
-      taskStarted.resolve();
-      await releaseTask.promise;
+    const readSession = invocation.context.systemAgentSessions.get.bind(
+      invocation.context.systemAgentSessions,
+    );
+    vi.spyOn(invocation.context.systemAgentSessions, "get").mockImplementation((sessionId) => {
+      const session = readSession(sessionId);
+      if (sessionId === "recover-session") {
+        sessionRead.resolve();
+      }
+      return session;
     });
-    await taskStarted.promise;
+    const turn = getSystemAgentSessionQueue(invocation.context.systemAgentSessions).enqueue(
+      "recover-session",
+      async () => {
+        turnStarted.resolve();
+        await releaseTurn.promise;
+      },
+    );
+    await turnStarted.promise;
 
     const history = systemAgentChatHistoryHandler(invocation.options);
+    await sessionRead.promise;
     const replacementActiveWizardStep = vi.fn().mockResolvedValue(undefined);
     invocation.context.systemAgentSessions.set("recover-session", {
       ownerKey: invocation.session.ownerKey,
       engine: { activeWizardStep: replacementActiveWizardStep },
       lastUsedAt: 1,
     });
-    releaseTask.resolve();
-    await Promise.all([globalTask, history]);
+    releaseTurn.resolve();
+    await Promise.all([turn, history]);
 
     expect(invocation.activeWizardStep).not.toHaveBeenCalled();
     expect(replacementActiveWizardStep).not.toHaveBeenCalled();

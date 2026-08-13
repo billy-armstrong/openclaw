@@ -1,12 +1,13 @@
 /**
  * Gateway request context construction tests.
  */
-import { describe, expect, it, vi } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import {
   GATEWAY_CLIENT_CAPS,
   GATEWAY_CLIENT_IDS,
   GATEWAY_CLIENT_MODES,
 } from "../../packages/gateway-protocol/src/client-info.js";
+import { resetCommandQueueStateForTest } from "../process/command-queue.test-support.js";
 import {
   ensureProfileForEmail,
   getUserProfileDisplay,
@@ -16,9 +17,14 @@ import {
 import { withOpenClawTestState } from "../test-utils/openclaw-test-state.js";
 import { createChatRunState } from "./server-chat-state.js";
 import type { GatewayServerLiveState } from "./server-live-state.js";
+import { systemAgentChatHistoryHandler } from "./server-methods/system-agent-chat-history.js";
 import { createGatewayRequestContext } from "./server-request-context.js";
 
 type GatewayRequestContextParams = Parameters<typeof createGatewayRequestContext>[0];
+
+afterEach(() => {
+  resetCommandQueueStateForTest();
+});
 
 function makeContextParams(
   overrides: Partial<GatewayRequestContextParams> = {},
@@ -400,9 +406,25 @@ describe("createGatewayRequestContext", () => {
         presenceKey: "profile-refresh-merge-unrelated",
       };
       const capturedProfile = sourceClient.authenticatedUserProfile;
+      const activeWizardStep = vi.fn(async () => ({
+        id: "channel",
+        type: "select" as const,
+        message: "Choose a channel",
+        options: ["Discord", "Slack"],
+      }));
       const params = makeContextParams({
         clients: new Set([sourceClient, unrelatedClient]) as never,
       });
+      params.systemAgentSessions.set("merge-wizard", {
+        ownerKey: `profile:${source.id}`,
+        engine: { activeWizardStep },
+        lastUsedAt: 1,
+      } as never);
+      params.systemAgentSessions.set("unrelated-wizard", {
+        ownerKey: `profile:${unrelatedProfile.id}`,
+        engine: { activeWizardStep: vi.fn(async () => undefined) },
+        lastUsedAt: 1,
+      } as never);
       const context = createGatewayRequestContext(params);
 
       const linked = linkEmail("merge-source@example.test", target.id);
@@ -422,6 +444,35 @@ describe("createGatewayRequestContext", () => {
         updatedAt: linked.updatedAt,
       });
       expect(unrelatedClient.authenticatedUserProfile.profileId).toBe(unrelatedProfile.id);
+      expect(params.systemAgentSessions.get("merge-wizard")?.ownerKey).toBe(`profile:${target.id}`);
+      expect(params.systemAgentSessions.get("unrelated-wizard")?.ownerKey).toBe(
+        `profile:${unrelatedProfile.id}`,
+      );
+      const historyCalls: Array<{ ok: boolean; payload?: unknown }> = [];
+      await systemAgentChatHistoryHandler({
+        params: { sessionId: "merge-wizard" },
+        client: sourceClient,
+        context,
+        respond: (ok: boolean, payload?: unknown) => historyCalls.push({ ok, payload }),
+      } as never);
+      expect(historyCalls).toEqual([
+        {
+          ok: true,
+          payload: {
+            turns: [],
+            activeWizard: {
+              sessionId: "merge-wizard",
+              step: {
+                id: "channel",
+                type: "select",
+                message: "Choose a channel",
+                options: ["Discord", "Slack"],
+              },
+            },
+          },
+        },
+      ]);
+      expect(activeWizardStep).toHaveBeenCalledOnce();
       const presence = vi.mocked(params.broadcast).mock.calls[0]?.[1] as {
         presence?: Array<{ user?: { id?: string; email?: string; avatarUrl?: string } }>;
       };

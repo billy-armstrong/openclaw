@@ -276,6 +276,18 @@ export function createGatewayRequestContext(
       return false;
     },
     refreshConnectedUserProfile: (profile) => {
+      const canonicalOwnerKey = `profile:${profile.id}`;
+      for (const session of params.systemAgentSessions.values()) {
+        if (!session.ownerKey.startsWith("profile:")) {
+          continue;
+        }
+        const ownerProfileId = session.ownerKey.slice("profile:".length);
+        // Profile merges rekey connected clients below. Move the live session in the
+        // same synchronous refresh or its next chat/history request loses the wizard.
+        if (ownerProfileId && resolveUserProfileId(ownerProfileId) === profile.id) {
+          session.ownerKey = canonicalOwnerKey;
+        }
+      }
       let presenceChanged = false;
       for (const gatewayClient of params.clients) {
         const authenticatedUserProfile = gatewayClient.authenticatedUserProfile;

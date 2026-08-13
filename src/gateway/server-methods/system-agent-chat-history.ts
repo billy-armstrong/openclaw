@@ -83,34 +83,33 @@ export const systemAgentChatHistoryHandler: GatewayRequestHandler = async ({
     return;
   }
   const requestedSessionId = params.sessionId;
-  const session = requestedSessionId
-    ? context.systemAgentSessions.get(requestedSessionId)
+  const recovery = requestedSessionId
+    ? await runSystemAgentGatewayTask(async () => {
+        const session = context.systemAgentSessions.get(requestedSessionId);
+        const ownerKey = resolveSystemAgentSessionOwnerKey({ client });
+        if (!session || ownerKey !== session.ownerKey) {
+          return undefined;
+        }
+        return await getSystemAgentSessionQueue(context.systemAgentSessions).enqueue(
+          requestedSessionId,
+          async () => {
+            if (context.systemAgentSessions.get(requestedSessionId) !== session) {
+              return undefined;
+            }
+            session.lastUsedAt = Date.now();
+            const engine = session.engine as typeof session.engine &
+              Pick<SystemAgentChatEngine, "activeWizardStep">;
+            return {
+              turns: readSystemAgentRecoveryHistory(
+                engine,
+                params.limit ?? DEFAULT_SYSTEM_AGENT_HISTORY_LIMIT,
+              ),
+              step: await engine.activeWizardStep(),
+            };
+          },
+        );
+      })
     : undefined;
-  const ownerKey = resolveSystemAgentSessionOwnerKey({ client });
-  const recovery =
-    requestedSessionId && session && ownerKey === session.ownerKey
-      ? await runSystemAgentGatewayTask(
-          async () =>
-            await getSystemAgentSessionQueue(context.systemAgentSessions).enqueue(
-              requestedSessionId,
-              async () => {
-                if (context.systemAgentSessions.get(requestedSessionId) !== session) {
-                  return undefined;
-                }
-                session.lastUsedAt = Date.now();
-                const engine = session.engine as typeof session.engine &
-                  Pick<SystemAgentChatEngine, "activeWizardStep">;
-                return {
-                  turns: readSystemAgentRecoveryHistory(
-                    engine,
-                    params.limit ?? DEFAULT_SYSTEM_AGENT_HISTORY_LIMIT,
-                  ),
-                  step: await engine.activeWizardStep(),
-                };
-              },
-            ),
-        )
-      : undefined;
   const turns =
     recovery?.turns ?? readTranscriptTail(params.limit ?? DEFAULT_SYSTEM_AGENT_HISTORY_LIMIT);
   respond(
