@@ -198,6 +198,93 @@ describe("custodian structured wizard", () => {
     expect(page.querySelector(".custodian__wizard-step")).not.toBeNull();
   });
 
+  it("does not duplicate an accepted answer restored during same-scope recovery", async () => {
+    const actionReply = createDeferred<{
+      sessionId: string;
+      reply: string;
+      action: "none";
+      wizardAction: { kind: "answer"; prompt: string };
+    }>();
+    const step = {
+      id: "port",
+      type: "text" as const,
+      message: "Gateway port",
+    };
+    const nextStep = {
+      id: "host",
+      type: "text" as const,
+      message: "Gateway host",
+    };
+    const request = vi
+      .fn()
+      .mockResolvedValueOnce({ turns: [] })
+      .mockResolvedValueOnce({
+        sessionId: "rotation-session",
+        reply: "Enter a port.",
+        action: "none",
+        wizardInputPending: true,
+        step,
+      })
+      .mockReturnValueOnce(actionReply.promise);
+    const harness = createContext(request, ["openclaw.chat", "openclaw.chat.history"], {
+      gatewayCapabilities: [
+        GATEWAY_SERVER_CAPS.SYSTEM_AGENT_WIZARD_CANCEL,
+        GATEWAY_SERVER_CAPS.SYSTEM_AGENT_CHAT_HISTORY_SESSION_RECOVERY,
+        GATEWAY_SERVER_CAPS.SYSTEM_AGENT_WIZARD_ACTION_RECEIPTS,
+      ],
+      recoveryScope: "principal-a",
+    });
+    const { page } = await mountPage(harness.context);
+
+    const input = await waitForFast(() => {
+      const element = page.querySelector<HTMLInputElement>(
+        '.custodian__wizard-step input[name="wizard-text"]',
+      );
+      expect(element).not.toBeNull();
+      return element!;
+    });
+    input.value = "18789";
+    input.dispatchEvent(new Event("input", { bubbles: true }));
+    await page.updateComplete;
+    page.querySelector<HTMLButtonElement>(".custodian__wizard-step .btn.primary")!.click();
+    await waitForFast(() => expect(page.textContent).toContain("Submitting answer"));
+
+    const replacementRequest = vi.fn().mockResolvedValue({
+      turns: [
+        { role: "assistant", text: "Enter a port.", at: 1 },
+        {
+          role: "user",
+          text: "18789",
+          at: 2,
+          wizardAction: { kind: "answer", prompt: "Gateway port" },
+        },
+        { role: "assistant", text: "Enter a host.", at: 3 },
+      ],
+      activeWizard: { sessionId: "rotation-session", step: nextStep },
+    });
+    harness.setGatewaySnapshot({
+      client: {
+        request: replacementRequest,
+        recoveryScope: "principal-a",
+        recoveryScopeReady: true,
+      } as unknown as GatewayBrowserClient,
+    });
+    await waitForFast(() => expect(replacementRequest).toHaveBeenCalledOnce());
+    await waitForFast(() => expect(page.textContent).toContain("Answer submitted"));
+    actionReply.resolve({
+      sessionId: "rotation-session",
+      reply: "Accepted by the retired client.",
+      action: "none",
+      wizardAction: { kind: "answer", prompt: "Gateway port" },
+    });
+
+    await waitForFast(() =>
+      expect(page.querySelectorAll(".custodian__structured-response")).toHaveLength(1),
+    );
+    expect(page.querySelectorAll(".chat-group.user")).toHaveLength(0);
+    expect(page.querySelector(".custodian__wizard-step")?.textContent).toContain("Gateway host");
+  });
+
   it("keeps older-Gateway wizard answers as plain user turns", async () => {
     const step = {
       id: "port",

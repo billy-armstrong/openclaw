@@ -258,8 +258,13 @@ export class CustodianSessionStore extends CustodianTranscriptState {
     const outcome = result.outcome;
     if (userTurnProjection === "unless-accepted" && outcome !== "accepted") {
       // Recovery may replace every message object while this request is pending. Preserve
-      // the attempt's transcript position, unless recovered history already contains its turn.
-      if (this.messages[userMessageIndex]?.role !== "user") {
+      // the attempt's transcript position, unless recovered history already contains its turn
+      // as either a plain answer or the Gateway-authored accepted receipt.
+      const recoveredTurn = this.messages[userMessageIndex];
+      const recoveredAttempt =
+        recoveredTurn !== undefined &&
+        (recoveredTurn.role === "user" || recoveredTurn.structuredResponse !== null);
+      if (!recoveredAttempt) {
         this.messages = this.messages.toSpliced(
           Math.min(userMessageIndex, this.messages.length),
           0,
